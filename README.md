@@ -10,7 +10,7 @@ TODO: intro
     * the provided Dockerfile already contains `cuda:11.8.0` toolchain and `python3`
 * build your own development environment: `./devtool build_devctr`
 * (OPTIONALLY) If you want to share your development environment with other people:
-    * register on [dockerhub.io](https://hub.docker.com/)
+    * register on [Dockerhub](https://hub.docker.com/)
     * change `DOCKER_HUB_USERNAME` in `devtool` to your username
     * push changes with `docker push <your username>:6_s894_finalproject_devctr:latest`
 
