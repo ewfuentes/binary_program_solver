@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Change this to your own docker registry.
-DEVCTR_IMAGE="barabanshik/6_s894_finalproject_devctr:latest"
+DOCKER_HUB_USERNAME="my_username"
+DEVCTR_IMAGE=${DOCKER_HUB_USERNAME}"/6_s894_finalproject_devctr:latest"
 
 # Environment.
 DEVCTR_DIR=$(pwd)/devctr
@@ -58,8 +59,8 @@ build_devctr() {
     docker_file_name=$DEVCTR_DIR/Dockerfile
     docker build -t "$DEVCTR_IMAGE" -f "$docker_file_name" .
 
-    echo "Pushing development container into " ${DEVCTR_IMAGE}
-    docker push ${DEVCTR_IMAGE}
+    # echo "Pushing development container into " ${DEVCTR_IMAGE}
+    # docker push ${DEVCTR_IMAGE}
 
     echo "Done."
 }

@@ -8,10 +8,11 @@ TODO: intro
 
 * create you own development environment by installing all required packages, libraries, dependencies, environmental variables, paths, and anything required to build your project by adding stuff into the `devctr/Dockerfile`
     * the provided Dockerfile already contains `cuda:11.8.0` toolchain and `python3`
-* login into your Docker Hub registry:
-    * on Ubuntu: `docker login`
-    * on Mac: TODO
 * build and push your own development environment: `./devtool build_devctr`
+* (OPTIONALLY) If you want to share your development environment with other people:
+    * register on [dockerhub.io](https://hub.docker.com/)
+    * change `DOCKER_HUB_USERNAME` in `devtool` to your username
+    * push changes with `docker push <your username>:6_s894_finalproject_devctr:latest`
 
 Now you can build things inside this development container anywhere, without "it works on my machine" issues anymore and without installing anything (which might be very complicated sometimes) on your host.
 
