@@ -16,9 +16,14 @@ TODO: intro
 
 Now you can build things inside this development container anywhere, without "it works on my machine" issues anymore and without installing anything (which might be very complicated and messy sometimes) on your physical machine (host).
 
-### Building your projects
+### Building your projects and (OPTIONAL) executing via telerun
 
 * put your project you want to build inside `src` folder
 * write what should be called to build your project in `src/build.sh`
+    * if you want to add some test input files along your binaries, write instructions in `build.sh` as well
+* (OPTIONAL) write what should be executed on the GPU server in `src/run.sh`
 * build it: `./devtool build_project`
-* the output can be found in `build` folder
+* the output can be found in `build` folder and all together in `build.tar`
+* (OPTIONAL) `build.tar` is shippable for execution via `telerun`:
+    * `python3 <path_to_telerun.py> submit build.tar`
+    * telerun will execute your `run.sh`
