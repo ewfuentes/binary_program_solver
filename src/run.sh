@@ -8,9 +8,8 @@
 # -----     * feel free to execute `ls` form here to check the content of the workdir
 # ----------------------------------------------------------------------------------
 
-# First, generate test inputs.
-python3 gen_test_data.py
+# We can see what's on the execution server in the home dir:
+echo "Content:"; ls
 
-# Run project.
-export MATMUL_TEST_DATA_DIR_2=$(pwd)
-./matmul
+# Run binary.
+./vector_add
