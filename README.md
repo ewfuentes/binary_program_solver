@@ -1,10 +1,6 @@
 # Towards reproducible builds with Docker development containers
 
-TODO: intro
-
-## Usage
-
-### Create your own development environment
+## Create your own development environment
 
 * create you own development environment by installing all required packages, libraries, dependencies, environmental variables, paths, and anything required to build your project by adding stuff into the `devctr/Dockerfile`
     * the provided Dockerfile already contains `cuda:11.8.0` toolchain and `python3`
@@ -16,7 +12,7 @@ TODO: intro
 
 Now you can build things inside this development container anywhere, without "it works on my machine" issues anymore and without installing anything (which might be very complicated and messy sometimes) on your physical machine (host).
 
-### Building your projects and (OPTIONAL) executing via telerun
+## Building your projects and (OPTIONAL) executing via Telerun
 
 * put your project you want to build inside `src` folder
 * write what should be called to build your project in `src/build.sh`
@@ -24,6 +20,6 @@ Now you can build things inside this development container anywhere, without "it
 * (OPTIONAL) write what should be executed on the GPU server in `src/run.sh`
 * build it: `./devtool build_project`
 * the output can be found in `build` folder and all together in `build.tar`
-* (OPTIONAL) `build.tar` is shippable for execution via `telerun`:
+* (OPTIONAL) `build.tar` is shippable for execution via `Telerun`:
     * `python3 <path_to_telerun.py> submit build.tar`
-    * telerun will execute your `run.sh`
+    * Telerun will execute your `run.sh`
