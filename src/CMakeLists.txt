@@ -20,6 +20,7 @@ set_target_properties(load_mps PROPERTIES
 # Define a test executable
 add_executable(load_mps_test load_mps_test.cc)
 target_link_libraries(load_mps_test GTest::gtest GTest::gtest_main load_mps)
+configure_file(sample.mps sample.mps)
 
 # Defining a cuda executable is easy as long as it ends in .cu
 add_executable(vector_add vector_add.cu)
