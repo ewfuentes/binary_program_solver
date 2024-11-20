@@ -18,31 +18,17 @@ std::string to_string(const RowInfo::Type &t) {
     }
 }
 
-TEST(LoadMpsTest, hello_world) {
+TEST(LoadMpsTest, load_simple_example) {
     MPSData mps = load_mps_file("sample.mps");
-    std::cout << "Parsed MPS File: " << mps.name << std::endl;
 
-    std::cout << "\nRows (Constraints):" << std::endl;
-    for (const auto &row : mps.rows) {
-        std::cout << "  " << row.name << " " << to_string(row.type) << std::endl;
-    }
+    EXPECT_EQ(mps.columns.size(), 10);
+    EXPECT_EQ(mps.rows.size(), 3);
+}
 
-    std::cout << "\nColumns (Variables):" << std::endl;
-    for (const auto &col : mps.columns) {
-        std::cout << "  " << col.first << ":";
-        for (const auto &rowVal : col.second) {
-            std::cout << " (" << rowVal.first << ", " << rowVal.second << ")";
-        }
-        std::cout << std::endl;
-    }
 
-    std::cout << "\nRHS:" << std::endl;
-    for (const auto &rhs : mps.rhs) {
-        std::cout << "  " << rhs.first << ": " << rhs.second << std::endl;
-    }
+TEST(LoadMpsTest, load_full_example) {
+    MPSData mps = load_mps_file("glass-sc.mps");
 
-    std::cout << "\nBounds:" << std::endl;
-    for (const auto &bound : mps.bounds) {
-        std::cout << "  " << bound.first << ": " << bound.second << std::endl;
-    }
+    EXPECT_EQ(mps.columns.size(), 214);
+    EXPECT_EQ(mps.rows.size(), 6120);
 }

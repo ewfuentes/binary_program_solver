@@ -68,6 +68,9 @@ MPSData load_mps_file(const std::filesystem::path &mps_file) {
                 std::string columnName, rowName;
                 double value;
                 iss >> columnName >> rowName >> value;
+                if (rowName == "'MARKER'") {
+                    continue;
+                }
                 mps.columns[columnName][rowName] = value;
             } else if (section == "RHS") {
                 std::string rhsName, rowName;
@@ -75,10 +78,7 @@ MPSData load_mps_file(const std::filesystem::path &mps_file) {
                 iss >> rhsName >> rowName >> value;
                 mps.rhs[rowName] = value;
             } else if (section == "BOUNDS") {
-                std::string boundType, varName;
-                double value;
-                iss >> boundType >> varName >> value;
-                mps.bounds[varName] = value;
+                // Ignore for now
             }
         }
     }
