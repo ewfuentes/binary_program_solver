@@ -12,9 +12,15 @@ set(CMAKE_CUDA_ARCHITECTURES 86)
 
 find_package(GTest REQUIRED)
 
+# Define a library
+add_library(load_mps load_mps.cc)
+set_target_properties(load_mps PROPERTIES
+    PUBLIC_HEADER load_mps.hh)
+
 # Define a test executable
 add_executable(load_mps_test load_mps_test.cc)
-target_link_libraries(load_mps_test GTest::gtest GTest::gtest_main)
+target_link_libraries(load_mps_test GTest::gtest GTest::gtest_main load_mps)
 
 # Defining a cuda executable is easy as long as it ends in .cu
 add_executable(vector_add vector_add.cu)
+
