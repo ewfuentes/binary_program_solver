@@ -15,8 +15,10 @@ echo "Building the project..."
 # Build code.
 SRC_DIR=`pwd`
 mkdir -p /tmp/build
+cd /tmp/build
 cmake -GNinja ${SRC_DIR}
 cmake --build .
 cp -r . ${CTR_BUILD_DIR}
 chown -R ${UID}:${UID} ${CTR_BUILD_DIR}
+cd ${SRC_DIR}
 # nvcc -O3 vector_add.cu -o ${CTR_BUILD_DIR}/vector_add
