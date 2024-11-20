@@ -71,6 +71,7 @@ build_project() {
     # Build inside the container.
     run_devctr \
         --workdir "$CTR_SRC_DIR" \
+        -e UID=`id -u` \
         -- \
         ./build.sh
     # Copy the run script.

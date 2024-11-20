@@ -13,4 +13,10 @@ echo "Building the project..."
 # -----     * all output files (e.g. generated binaries, test inputs, etc.) must be places into $CTR_BUILD_DIR
 # ----------------------------------------------------------------------------------
 # Build code.
-nvcc -O3 vector_add.cu -o ${CTR_BUILD_DIR}/vector_add
+SRC_DIR=`pwd`
+mkdir -p /tmp/build
+cmake -GNinja ${SRC_DIR}
+cmake --build .
+cp -r . ${CTR_BUILD_DIR}
+chown -R ${UID}:${UID} ${CTR_BUILD_DIR}
+# nvcc -O3 vector_add.cu -o ${CTR_BUILD_DIR}/vector_add

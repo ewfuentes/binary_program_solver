@@ -5,4 +5,4 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # Install needed packages.
 RUN apt update && \
-    apt -y install python3
+    apt -y install python3 libgtest-dev cmake ninja-build
