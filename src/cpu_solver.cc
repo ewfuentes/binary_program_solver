@@ -2,6 +2,7 @@
 #include "cpu_solver.hh"
 #include "binary_program.hh"
 
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <vector>
@@ -42,6 +43,11 @@ float compute_optimistic_cost(const Eigen::VectorXf &obj, const PartialAssignmen
     const float optimistic_cost_to_go = obj.bottomRows(num_unassigned).cwiseMin(0).sum();
     return realized_cost + optimistic_cost_to_go;
 }
+
+double logsumexp(const double a, const double b) {
+    const double c = std::max(a, b);
+    return c + std::log2(std::exp2(a - c) + std::exp2(b - c));
+}
 } // namespace detail
 
 
@@ -53,15 +59,28 @@ Solution solve_cpu(const BinaryProgram &program) {
     PartialAssignment best_solution;
     float best_cost = std::numeric_limits<float>::max();
 
+    int pop_count = 0;
+    int early_term = 0;
+    double log_coverage = std::numeric_limits<double>::lowest();
     while (!queue.empty()) {
         const PartialAssignment work = queue.back();
         queue.pop_back();
+        pop_count++;
+
+        if (pop_count % 1000 == 0) {
+            std::cout << "pop_count: " << pop_count
+                << " early term count: " << early_term
+                << " log coverage: " << log_coverage  << " / " << num_variables
+                << std::endl;
+        }
 
         // Check if feasible
         const bool is_feasible = detail::check_if_feasible(program.constraints, program.rhs, work);
         const float optimistic_cost = detail::compute_optimistic_cost(program.objective, work);
 
         if (!is_feasible || optimistic_cost >= best_cost) {
+            early_term++;
+            log_coverage = detail::logsumexp(log_coverage, num_variables - work.size());
             continue;
         }
 
@@ -69,6 +88,8 @@ Solution solve_cpu(const BinaryProgram &program) {
             // This is a complete assigment, store if better than incumbent
             best_cost = optimistic_cost;
             best_solution = work;
+            log_coverage = detail::logsumexp(log_coverage, num_variables - work.size());
+            std::cout << "Found new best incumbent cost: " << best_cost <<std::endl;
             continue;
         }
 

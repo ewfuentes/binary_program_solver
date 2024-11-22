@@ -37,7 +37,7 @@ configure_file(glass-sc.mps glass-sc.mps)
 add_library(cpu_solver cpu_solver.cc)
 set_target_properties(cpu_solver PROPERTIES
     PUBLIC_HEADER cpu_solver.hh)
-target_link_libraries(cpu_solver PUBLIC binary_program)
+target_link_libraries(cpu_solver PUBLIC binary_program load_mps)
 
 # Add CPU Solver Test
 add_executable(cpu_solver_test cpu_solver_test.cc)

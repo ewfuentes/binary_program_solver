@@ -1,5 +1,6 @@
 
 #include "cpu_solver.hh"
+#include "load_mps.hh"
 
 #include <gtest/gtest.h>
 
@@ -34,6 +35,15 @@ TEST(CpuSolverTest, test_simple_program) {
     constexpr double TOL = 1e-6;
     EXPECT_NEAR(result.value, 4.0, TOL);
     EXPECT_EQ(result.assignment, Eigen::Vector4f(1.0, 0.0, 1.0, 0.0));
+
+    std::cout << "Assignment: " << result.assignment.transpose() << std::endl;
+    std::cout << "Value: " << result.value << std::endl;
+}
+
+TEST(CpuSolverTest, big_problem_test) {
+    const auto mps_data = load_mps_file("glass-sc.mps");
+    const auto binary_program = bp_from_mps(mps_data);
+    const auto result = solve_cpu(binary_program);
 
     std::cout << "Assignment: " << result.assignment.transpose() << std::endl;
     std::cout << "Value: " << result.value << std::endl;
