@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "binary_program.hh"
+
 struct RowInfo {
     enum class Type {
         NONE,  // N: No constraint, used for the objective function
@@ -20,9 +22,11 @@ struct RowInfo {
 struct MPSData {
     std::string name;
     std::vector<RowInfo> rows;                   // Constraints (e.g., L, G, N)
-    std::unordered_map<std::string, std::unordered_map<std::string, double>> columns; // Variables and coefficients
-    std::unordered_map<std::string, double> rhs;               // RHS values
+    std::unordered_map<std::string, std::unordered_map<std::string, float>> columns; // Variables and coefficients
+    std::unordered_map<std::string, float> rhs;               // RHS values
 };
 
 
 MPSData load_mps_file(const std::filesystem::path &mps_file);
+
+BinaryProgram bp_from_mps(const MPSData &data);
