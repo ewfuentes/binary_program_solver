@@ -79,11 +79,17 @@ MPSData load_mps_file(const std::filesystem::path &mps_file) {
                     continue;
                 }
                 mps.columns[columnName][rowName] = value;
+                if (iss >> rowName >> value) {
+                    mps.columns[columnName][rowName] = value;
+                }
             } else if (section == "RHS") {
                 std::string rhsName, rowName;
                 double value;
                 iss >> rhsName >> rowName >> value;
                 mps.rhs[rowName] = value;
+                if (iss >> rowName >> value) {
+                    mps.rhs[rowName] = value;
+                }
             } else if (section == "BOUNDS") {
                 // Ignore for now
             }
@@ -167,16 +173,16 @@ BinaryProgram bp_from_mps(const MPSData &mps) {
         }
     }
 
-    fmt::print("variables: {}\r\n", variables);
-    fmt::print("constraints: {}\r\n", constraints);
-    fmt::print("constraint_type_from_name: {}\r\n", constraint_type_from_name);
-    fmt::print("constraint_start_idx_from_name: {}\r\n", constraint_start_idx_from_name);
+    // fmt::print("variables: {}\r\n", variables);
+    // fmt::print("constraints: {}\r\n", constraints);
+    // fmt::print("constraint_type_from_name: {}\r\n", constraint_type_from_name);
+    // fmt::print("constraint_start_idx_from_name: {}\r\n", constraint_start_idx_from_name);
 
     std::vector<Eigen::Triplet<float>> constraint_entries;
     for (int var_idx = 0; var_idx < variables.size(); var_idx++) {
         const std::string &var_name = variables.at(var_idx);
         const auto &entries = mps.columns.at(var_name);
-        fmt::print("Entries for {}: {}\r\n", var_name, entries);
+        // fmt::print("Entries for {}: {}\r\n", var_name, entries);
         for (const auto &[constraint_name, value] : entries) {
             const auto true_constraint_type = constraint_type_from_name.at(constraint_name);
 
@@ -207,7 +213,13 @@ BinaryProgram bp_from_mps(const MPSData &mps) {
         if (true_constraint_type == CT::NONE || true_constraint_type == CT::UNKNOWN) {
             continue;
         }
-        const float rhs_value = mps.rhs.at(constraint_name);
+        const auto rhs_iter = mps.rhs.find(constraint_name);
+        float rhs_value = 0.0;
+        if (rhs_iter != mps.rhs.end()) {
+            rhs_value = rhs_iter->second;
+        } else {
+            fmt::print("Cannot find constraint \"{}\" in RHS. Assuming it's equal to zero\r\n", constraint_name);
+        }
         const int constraint_start_idx = constraint_start_idx_from_name.at(constraint_name);
         const auto constraint_types = true_constraint_type == CT::EQUAL ? 
             std::vector<CT>{CT::LESS_THAN, CT::GREATER_THAN} 

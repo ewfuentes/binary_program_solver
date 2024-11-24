@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_ARCHITECTURES 86)
+set(CMAKE_BUILD_TYPE Release)
 
 find_package(GTest REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -29,8 +30,13 @@ target_link_libraries(load_mps binary_program fmt::fmt)
 # Define a test executable
 add_executable(load_mps_test load_mps_test.cc)
 target_link_libraries(load_mps_test PRIVATE GTest::gtest GTest::gtest_main load_mps)
-configure_file(sample.mps sample.mps)
-configure_file(glass-sc.mps glass-sc.mps)
+configure_file(test_problems/sample.mps test_problems/sample.mps)
+configure_file(test_problems/stein9inf.mps test_problems/stein9inf.mps)
+configure_file(test_problems/stein15inf.mps test_problems/stein15inf.mps)
+configure_file(test_problems/stein45inf.mps test_problems/stein45inf.mps)
+configure_file(test_problems/p0201.mps test_problems/p0201.mps)
+configure_file(test_problems/p2m2p1m1p0n100.mps test_problems/p2m2p1m1p0n100.mps)
+configure_file(test_problems/glass-sc.mps test_problems/glass-sc.mps)
 
 
 # Add CPU solver

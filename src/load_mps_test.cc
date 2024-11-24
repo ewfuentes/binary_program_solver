@@ -1,7 +1,10 @@
 
 #include <gtest/gtest.h>
 
+#include "cpu_solver.hh"
 #include "load_mps.hh"
+#include "fmt/format.h"
+#include "fmt/ranges.h"
 
 namespace {
 MPSData create_test_mps_data() {
@@ -68,16 +71,51 @@ std::string to_string(const RowInfo::Type &t) {
     }
 }
 
+template <>
+struct fmt::formatter<RowInfo::Type>  {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
+
+    auto format(const RowInfo::Type &t, format_context& ctx) const {
+      string_view name = "unknown";
+      switch (t) {
+        case RowInfo::Type::NONE:   name = "None"; break;
+        case RowInfo::Type::LESS_THAN:   name = "LE"; break;
+        case RowInfo::Type::GREATER_THAN:   name = "GE"; break;
+        case RowInfo::Type::EQUAL:   name = "EQ"; break;
+        default: name = "UNKNOWN"; break;
+      }
+      return format_to(ctx.out(), name);
+    }
+};
+
+template <>
+struct fmt::formatter<RowInfo> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
+
+    auto format(const RowInfo &c, format_context& ctx) const {
+      return format_to(ctx.out(), "{{Row Info name: {} type: {}}}", c.name, c.type);
+    }
+};
+
 TEST(LoadMpsTest, load_simple_example) {
-    MPSData mps = load_mps_file("sample.mps");
+    MPSData mps = load_mps_file("test_problems/sample.mps");
 
     EXPECT_EQ(mps.columns.size(), 10);
     EXPECT_EQ(mps.rows.size(), 3);
 }
 
+TEST(LoadMpsTest, load_dual_columns) {
+    MPSData mps = load_mps_file("test_problems/stein9inf.mps");
+
+    EXPECT_EQ(mps.columns.size(), 9);
+    EXPECT_EQ(mps.rows.size(), 15);
+}
+
 
 TEST(LoadMpsTest, load_full_example) {
-    MPSData mps = load_mps_file("glass-sc.mps");
+    MPSData mps = load_mps_file("test_problems/glass-sc.mps");
 
     EXPECT_EQ(mps.columns.size(), 214);
     EXPECT_EQ(mps.rows.size(), 6120);

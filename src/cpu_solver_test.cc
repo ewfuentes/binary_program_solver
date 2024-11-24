@@ -2,6 +2,7 @@
 #include "cpu_solver.hh"
 #include "load_mps.hh"
 
+#include <gtest/gtest-param-test.h>
 #include <gtest/gtest.h>
 
 namespace {
@@ -40,11 +41,24 @@ TEST(CpuSolverTest, test_simple_program) {
     std::cout << "Value: " << result.value << std::endl;
 }
 
-TEST(CpuSolverTest, big_problem_test) {
-    const auto mps_data = load_mps_file("glass-sc.mps");
+class MPSCPUTest : public testing::TestWithParam<std::filesystem::path> {
+};
+
+TEST_P(MPSCPUTest, mps_file_test) {
+    const auto mps_data = load_mps_file(GetParam());
     const auto binary_program = bp_from_mps(mps_data);
     const auto result = solve_cpu(binary_program);
 
     std::cout << "Assignment: " << result.assignment.transpose() << std::endl;
     std::cout << "Value: " << result.value << std::endl;
 }
+
+INSTANTIATE_TEST_SUITE_P(MPSTests, MPSCPUTest, testing::Values(
+    "test_problems/stein9inf.mps",
+    "test_problems/stein15inf.mps",
+    "test_problems/stein45inf.mps",
+    "test_problems/p0201.mps",
+    "test_problems/p2m2p1m1p0n100.mps",
+    "test_problems/glass-sc.mps"
+));
+

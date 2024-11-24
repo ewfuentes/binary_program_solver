@@ -3,7 +3,10 @@
 
 #include "binary_program.hh"
 
-using PartialAssignment = Eigen::VectorXf;
+struct PartialAssignment {
+    Eigen::VectorXf assignment;
+    int num_assigned;
+};
 
 Solution solve_cpu(const BinaryProgram &program);
 
