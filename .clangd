@@ -1,0 +1,18 @@
+CompileFlags: # Tweak the parse settings, example directory given to show format
+  Add:
+    - --no-cuda-version-check
+    - -std=c++23
+  Remove:
+    - -forward-unknown-to-host-compiler
+    - --generate-code*
+    - --option-file
+    - --expt-relaxed-constexpr
+    - --generate-line-info
+    - --gencode
+    - -Xcudafe
+    - -Xcompiler=*
+    - --diag_suppress=*
+    - --expt-extended-lambda
+    - --options-file
+    - -gencode
+    - -fconcepts-diagnostics-depth=*
