@@ -45,7 +45,7 @@ class MPSCPUTest : public testing::TestWithParam<std::filesystem::path> {
 };
 
 TEST_P(MPSCPUTest, mps_file_test) {
-    const auto mps_data = load_mps_file(GetParam());
+    const auto mps_data = load_mps_file(std::filesystem::canonical("/proc/self/exe").parent_path() / GetParam());
     const auto binary_program = bp_from_mps(mps_data);
     const auto result = solve_cpu(binary_program);
 

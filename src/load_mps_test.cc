@@ -1,4 +1,4 @@
-
+#include <fmt/base.h>
 #include <gtest/gtest.h>
 
 #include "cpu_solver.hh"
@@ -76,7 +76,7 @@ struct fmt::formatter<RowInfo::Type>  {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
 
-    auto format(const RowInfo::Type &t, format_context& ctx) const {
+    auto format(const RowInfo::Type &t, format_context& ctx) const -> format_context::iterator {
       string_view name = "unknown";
       switch (t) {
         case RowInfo::Type::NONE:   name = "None"; break;
@@ -85,7 +85,7 @@ struct fmt::formatter<RowInfo::Type>  {
         case RowInfo::Type::EQUAL:   name = "EQ"; break;
         default: name = "UNKNOWN"; break;
       }
-      return format_to(ctx.out(), name);
+      return fmt::format_to(ctx.out(), "{}", name);
     }
 };
 
@@ -100,14 +100,14 @@ struct fmt::formatter<RowInfo> {
 };
 
 TEST(LoadMpsTest, load_simple_example) {
-    MPSData mps = load_mps_file("test_problems/sample.mps");
+    MPSData mps = load_mps_file(std::filesystem::canonical("/proc/self/exe").parent_path() / "test_problems/sample.mps");
 
     EXPECT_EQ(mps.columns.size(), 10);
     EXPECT_EQ(mps.rows.size(), 3);
 }
 
 TEST(LoadMpsTest, load_dual_columns) {
-    MPSData mps = load_mps_file("test_problems/stein9inf.mps");
+    MPSData mps = load_mps_file(std::filesystem::canonical("/proc/self/exe").parent_path() / "test_problems/stein9inf.mps");
 
     EXPECT_EQ(mps.columns.size(), 9);
     EXPECT_EQ(mps.rows.size(), 15);
@@ -115,7 +115,7 @@ TEST(LoadMpsTest, load_dual_columns) {
 
 
 TEST(LoadMpsTest, load_full_example) {
-    MPSData mps = load_mps_file("test_problems/glass-sc.mps");
+    MPSData mps = load_mps_file(std::filesystem::canonical("/proc/self/exe").parent_path() / "test_problems/glass-sc.mps");
 
     EXPECT_EQ(mps.columns.size(), 214);
     EXPECT_EQ(mps.rows.size(), 6120);

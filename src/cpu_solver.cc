@@ -19,7 +19,7 @@ namespace detail {
 bool check_if_feasible(
     const BP::ConstraintMat &A, const Eigen::VectorXf &rhs, const PartialAssignment &x) {
     const int num_assigned = x.num_assigned;
-    const int num_unassigned = A.cols() - num_assigned;
+    // const int num_unassigned = A.cols() - num_assigned;
     Eigen::VectorXf optimistic_constraints = Eigen::VectorXf(A.rows());
 
     for (int row_idx = 0; row_idx < A.rows(); row_idx++) {
@@ -72,7 +72,7 @@ Solution solve_cpu(const BinaryProgram &program) {
     while (!queue.empty()) {
         // Update the partial assignment
         const int curr_depth = queue.size();
-        for (int i = 0; i < queue.size(); i++) {
+        for (size_t i = 0; i < queue.size(); i++) {
             current.assignment(i) = queue.at(i).back();
         }
         current.num_assigned = curr_depth;

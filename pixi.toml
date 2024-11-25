@@ -1,0 +1,85 @@
+[project]
+name = "project"
+version = "0.1.0"
+description = "Add a short description here"
+authors = ["Sobhan Mohammadpour <somo@mit.edu>"]
+channels = [
+    "nvidia/label/cuda-12.4.1",
+    "conda-forge",
+    "nodefaults",
+]
+platforms = ["linux-64"]
+
+[system-requirements]
+cuda = "12"
+linux = "4"
+
+[tasks]
+# Commands as lists so you can also add documentation in between.
+
+configure = { cmd = [
+    "cmake",
+    "-G",
+    "Ninja",
+    "-S",
+    "src",
+    "-DCMAKE_BUILD_TYPE=Release",
+    # "-DCMAKE_BUILD_TYPE=Debug",
+    "-DCMAKE_SYSTEM_PREFIX_PATH=$CONDA_PREFIX",
+    "-DCMAKE_PREFIX_PATH=$CONDA_PREFIX",
+    "-B",
+    "build",
+] }
+
+build = { cmd = ["ninja", "-C", "build"], depends-on = ["configure"] }
+test = { cmd = [
+    "ctest",
+    "all",
+    "--output-on-failure",
+    "--test-dir",
+    "build",
+], depends-on = [
+    "build",
+] }
+clean = { cmd = ["rm", "-rf", "build"] }
+retest = { cmd = [
+    "ctest",
+    "all",
+    "--output-on-failure",
+    "--rerun-failed",
+    "--test-dir",
+    "build",
+], depends-on = [
+    "build",
+] }
+
+
+[dependencies]
+
+backtrace = "*"
+boost = "*"
+boost-cpp = "*"
+
+clang = "*"
+clang-format = "*"
+clang-tools = "*"
+clangdev = "*"
+clangxx = "*"
+libclang = "*"
+libclang-cpp = "*"
+python-clang = "*"
+cmake = "*"
+cuda-toolkit = ">=12.4"
+fmt = "*"
+cudnn = { channel = "conda-forge" } # TODO: hack
+gxx = "<13.3"
+make = "*"
+ninja = "*"
+gtest = "*"
+sysroot_linux-64 = { version = ">=2.28", channel = "conda-forge" }
+
+
+gdb = "*"
+nvtop = "*"
+pre-commit = "*"
+btop = "*"

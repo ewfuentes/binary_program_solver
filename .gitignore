@@ -1,3 +1,5 @@
 build/
 build.tar
 telerun-out/
+.pixi
+.cache
