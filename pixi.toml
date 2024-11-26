@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Add a short description here"
 authors = ["Sobhan Mohammadpour <somo@mit.edu>"]
 channels = [
-    "nvidia/label/cuda-12.4.1",
+    "nvidia/label/cuda-12.6",
     "conda-forge",
     "nodefaults",
 ]

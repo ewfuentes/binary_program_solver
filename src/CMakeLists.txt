@@ -10,13 +10,14 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_ARCHITECTURES 86)
-set(CMAKE_BUILD_TYPE Release) # bad form
+# set(CMAKE_BUILD_TYPE Release) # bad form
+set(CMAKE_BUILD_TYPE Debug)
+
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -fPIC -diag-suppress 3013 --expt-relaxed-constexpr --generate-line-info -t 8")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wall -pipe -Wextra -Wno-register -Wfatal-errors -Wextra -Wno-missing-field-initializers -g -fconcepts-diagnostics-depth=10")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g  -fsanitize=address")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g ")
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O0 -g -Xcompiler")
 endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS on)
@@ -49,6 +50,11 @@ add_library(cpu_solver cpu_solver.cc)
 set_target_properties(cpu_solver PROPERTIES
     PUBLIC_HEADER cpu_solver.hh)
 target_link_libraries(cpu_solver PUBLIC binary_program load_mps)
+
+
+# do not link with eigen
+add_executable(solver solver.cu)
+target_link_libraries(solver fmt::fmt)
 
 
 # TEST GO BELOW THIS
