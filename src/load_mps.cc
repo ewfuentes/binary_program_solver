@@ -46,10 +46,12 @@ MPSData load_mps_file(const std::filesystem::path &mps_file) {
         if (line.empty()) continue;
 
         // Identify new sections
-        if (line == "NAME") {
-            std::getline(file, line);
+        if (line.starts_with("NAME")) {
             trim(line);
-            mps.name = line;
+            std::istringstream iss(line);
+            std::string section, name;
+            iss >> section >> name;
+            mps.name = name;
             section.clear();
         } else if (line == "ROWS") {
             section = "ROWS";
