@@ -79,17 +79,22 @@ template <typename T, int x, int y> struct range_array {
     for (auto &i : res.idx)
       i = 0;
 
+    // Count the number of items that have a particular row index
     for (auto &[i, _] : triplet)
       ++res.idx[i + 1];
 
+    // compute prefix sums to get row start indices
     for (int i = 0; i < x; i++)
       res.idx[i + 1] += res.idx[i];
 
+    // Assign the items so that each value is in the correct row, though unsorted
     for (auto &[i, j] : triplet) {
       res.val[res.idx[i] + delta[i]] = j;
       ++delta[i];
     }
-    for (int i = 0; i < x; ++i)
+
+    // Check that items were assigned correctly
+    for (int i = 0; i < x; ++i) {
       if (res.idx[i] + delta[i] != res.idx[i + 1]) {
         fmt::println("delta: {}", fmt::join(delta, ", "));
         fmt::println("idx: {}", fmt::join(res.idx, ", "));
@@ -97,7 +102,11 @@ template <typename T, int x, int y> struct range_array {
 
         throw std::runtime_error("range array construction failed");
       }
+    }
 
+    // sort the items in the rows. Note this only works if items
+    // of type T can be sorted. In our case, we're using std::arrays
+    // which are compared lexographically
     for (int i = 0; i < x; ++i) {
       std::stable_sort(res.val.begin() + res.idx[i],
                        res.val.begin() + res.idx[i + 1]);
@@ -285,8 +294,98 @@ update_bounds(solution_t<n_var, n_constr> const *const delta_queue,
   }
 }
 
+template <int NUM_VARS, int NUM_CONSTRAINTS> 
+std::unordered_map<std::string, int>
+get_ordered_vars_and_constraints(const MPSData &mps_data) {
+  std::unordered_map<std::string, int> out;
+
+  int idx = 0;
+  for (int i = 0; i < static_cast<int>(mps_data.rows.size()); i++) {
+    const auto &row = mps_data.rows.at(i);
+    if (row.type == RowInfo::Type::NONE) {
+      continue; 
+    }
+    out[row.name] = idx;
+    idx++;
+  }
+
+  int i = 0;
+  for (const auto &[name, _] : mps_data.columns) {
+    out[name] = i;
+    i++;
+  }
+
+  return out;
+}
+
+template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
+problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> problem_from_mps(const MPSData &mps_data) {
+  using TripletArray = cuda::std::array<cuda::std::tuple<int, pair<int>>, NUM_NONZERO>;
+
+  using VarMap = range_array<pair<int>, NUM_VARS, NUM_NONZERO>;
+  using ConstraintMap = range_array<pair<int>, NUM_CONSTRAINTS, NUM_NONZERO>;
+
+  TripletArray constraint_from_var;
+  TripletArray var_from_constraint;
+  cuda::std::array<int, NUM_VARS> objective; 
+  cuda::std::array<int, NUM_CONSTRAINTS> rhs;
+  cuda::std::array<int, NUM_CONSTRAINTS> n_rhs;
+  bitset<NUM_CONSTRAINTS> is_eq;
+
+  const auto idx_from_name = get_ordered_vars_and_constraints<NUM_VARS, NUM_CONSTRAINTS>(mps_data);
+  std::unordered_map<std::string, RowInfo::Type> constraint_type_from_name;
+  std::transform(mps_data.rows.begin(), mps_data.rows.end(),
+      std::inserter(constraint_type_from_name, constraint_type_from_name.end()),
+      [](const auto &row){ return std::pair{row.name, row.type}; });
+
+
+  int triplet_idx = 0;
+  for (const auto &[var_name, coeff_from_constraint]: mps_data.columns) {
+    const int var_idx = idx_from_name.at(var_name);
+    for (const auto &[constraint_name, coeff] : coeff_from_constraint) {
+      const auto constraint_type = constraint_type_from_name.at(constraint_name);
+      if (constraint_type == RowInfo::Type::NONE) {
+        // This is the objective
+        objective[var_idx] = coeff;
+        continue;
+      }
+      const int constraint_idx = idx_from_name.at(constraint_name);
+      const int coeff_to_store = constraint_type == RowInfo::Type::GREATER_THAN ? -coeff : coeff;
+      constraint_from_var[triplet_idx] = {var_idx, {constraint_idx, coeff_to_store}};
+      var_from_constraint[triplet_idx] = {constraint_idx, {var_idx, coeff_to_store}};
+      n_rhs[constraint_idx]++;
+      triplet_idx++;
+    }
+  }
+
+  for (const auto &[constraint_name, type] : constraint_type_from_name) {
+    if (type == RowInfo::Type::NONE) {
+      continue;
+    }
+    const int coeff = mps_data.rhs.at(constraint_name);
+    const int constraint_idx = idx_from_name.at(constraint_name);
+    const int coeff_to_store = type == RowInfo::Type::GREATER_THAN ? -coeff : coeff;
+    rhs[constraint_idx] = coeff_to_store;
+    is_eq.set(constraint_idx, type == RowInfo::Type::EQUAL);
+  }
+
+
+  return problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>{
+    .obj = objective,
+    .rhs = rhs,
+    .rhs_n = n_rhs,
+    .is_eq = is_eq,
+    .var_2_constr = VarMap::from_triplet(constraint_from_var),
+    .constr_2_var = ConstraintMap::from_triplet(var_from_constraint),
+  };
+}
+
 template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
 void solve_gpu_impl(const MPSData &mps_data) {
+  // Convert the problem
+  const auto problem = problem_from_mps<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>(mps_data);
+  fmt::println("Problem: {}", problem);
+
   // Allocate space
 
   // Solve the problem
@@ -308,7 +407,7 @@ void solve_gpu(const MPSData &mps_data) {
   if (num_vars == 9 && num_constraints == 14 && num_nonzero == 54) {
     solve_gpu_impl<9, 14, 54>(mps_data);
   } else if (num_vars == 15 && num_constraints == 37 && num_nonzero == 135) {
-    solve_gpu_impl<15, 47, 135>(mps_data);
+    solve_gpu_impl<15, 37, 135>(mps_data);
   } else {
     fmt::println("Unhandled problem size!");
   }
