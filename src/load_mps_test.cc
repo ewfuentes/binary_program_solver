@@ -1,10 +1,10 @@
-#include <fmt/base.h>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <gtest/gtest.h>
 
 #include "cpu_solver.hh"
 #include "load_mps.hh"
-#include "fmt/format.h"
-#include "fmt/ranges.h"
+#include "bp_from_mps.hh"
 
 namespace {
 MPSData create_test_mps_data() {

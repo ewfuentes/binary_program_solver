@@ -39,6 +39,11 @@ set_target_properties(load_mps PROPERTIES
     PUBLIC_HEADER load_mps.hh)
 target_link_libraries(load_mps binary_program fmt::fmt)
 
+add_library(bp_from_mps bp_from_mps.cc)
+set_target_properties(bp_from_mps PROPERTIES
+    PUBLIC_HEADER bp_from_mps.hh)
+target_link_libraries(bp_from_mps binary_program fmt::fmt load_mps)
+
 
 # Defining a cuda executable is easy as long as it ends in .cu
 add_executable(vector_add vector_add.cu)
@@ -49,7 +54,7 @@ add_executable(vector_add vector_add.cu)
 add_library(cpu_solver cpu_solver.cc)
 set_target_properties(cpu_solver PROPERTIES
     PUBLIC_HEADER cpu_solver.hh)
-target_link_libraries(cpu_solver PUBLIC binary_program load_mps)
+target_link_libraries(cpu_solver PUBLIC binary_program load_mps bp_from_mps)
 
 
 # do not link with eigen
@@ -64,7 +69,7 @@ enable_testing()
 
 # Define a test executable
 add_executable(load_mps_test load_mps_test.cc)
-target_link_libraries(load_mps_test PRIVATE GTest::gtest GTest::gtest_main load_mps)
+target_link_libraries(load_mps_test PRIVATE GTest::gtest GTest::gtest_main load_mps bp_from_mps)
 add_test(NAME load_mps_test COMMAND load_mps_test)
 
 

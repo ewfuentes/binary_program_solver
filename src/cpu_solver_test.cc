@@ -1,6 +1,7 @@
 
 #include "cpu_solver.hh"
 #include "load_mps.hh"
+#include "bp_from_mps.hh"
 
 #include <gtest/gtest-param-test.h>
 #include <gtest/gtest.h>
