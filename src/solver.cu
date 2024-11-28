@@ -65,7 +65,7 @@ template <typename T, int x, int y> struct range_array {
   cuda::std::array<int, x + 1> idx;
   cuda::std::array<T, y> val;
 
-  auto static from_tiplet(
+  auto static from_triplet(
       cuda::std::array<cuda::std::tuple<int, T>, y> const &triplet) {
     cuda::std::array<int, x + 1> delta;
     range_array res;
@@ -377,23 +377,23 @@ x + y = 1
 z + w = 1
 */
   cuda::std::array<cuda::std::tuple<int, pair<int>>, 4> const var_2_constr{
-      cuda::std::make_tuple(0, pair{0, 1}),
-      cuda::std::make_tuple(1, pair{0, 1}),
-      cuda::std::make_tuple(2, pair{1, 1}),
-      cuda::std::make_tuple(3, pair{1, 1})};
+      cuda::std::make_tuple(0, pair<int>{0, 1}),
+      cuda::std::make_tuple(1, pair<int>{0, 1}),
+      cuda::std::make_tuple(2, pair<int>{1, 1}),
+      cuda::std::make_tuple(3, pair<int>{1, 1})};
 
   cuda::std::array<cuda::std::tuple<int, pair<int>>, 4> const constr_2_var{
-      cuda::std::make_tuple(0, pair{0, 1}),
-      cuda::std::make_tuple(0, pair{1, 1}),
-      cuda::std::make_tuple(1, pair{2, 1}),
-      cuda::std::make_tuple(1, pair{3, 1})};
+      cuda::std::make_tuple(0, pair<int>{0, 1}),
+      cuda::std::make_tuple(0, pair<int>{1, 1}),
+      cuda::std::make_tuple(1, pair<int>{2, 1}),
+      cuda::std::make_tuple(1, pair<int>{3, 1})};
   auto const problem = problem_t<4, 2, 4>{
       .obj = {1, 2, 3, 4},
       .rhs = {1, 1},
       .rhs_n = {2, 2},
       .is_eq = bitset<2>::full(true),
-      .var_2_constr = range_array<pair<int>, 4, 4>::from_tiplet(var_2_constr),
-      .constr_2_var = range_array<pair<int>, 2, 4>::from_tiplet(constr_2_var),
+      .var_2_constr = range_array<pair<int>, 4, 4>::from_triplet(var_2_constr),
+      .constr_2_var = range_array<pair<int>, 2, 4>::from_triplet(constr_2_var),
   };
 
   decltype(problem) *cuda_prob = nullptr;

@@ -1,6 +1,7 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.25.2)
 project("Binary Program Solver" LANGUAGES CUDA CXX)
 
+include(FetchContent)
 include(CheckLanguage)
 check_language(CUDA)
 
@@ -22,6 +23,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+  fmt
+  GIT_REPOSITORY https://github.com/fmtlib/fmt
+  GIT_TAG        0c9fce2ffefecfdce794e1859584e25877b7b592) # 11.0.2
+FetchContent_MakeAvailable(fmt)
 
 find_package(GTest REQUIRED)
 find_package(Eigen3 REQUIRED)
