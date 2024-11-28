@@ -60,6 +60,16 @@ template <unsigned int n> struct bitset {
     }
     return res;
   }
+  static bitset<n> constexpr from(cuda::std::array<bool, n> const &arr) { 
+    bitset<n> res;
+    for (int i = 0; i < cdiv(n, 32u); i++) {
+      res.data[i] = 0;
+    }
+    for (int i = 0; i < n; i++) {
+      res.set(i, arr[i]);
+    }
+    return res;
+  }
 };
 template <typename T, int x, int y> struct range_array {
   cuda::std::array<int, x + 1> idx;

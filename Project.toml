@@ -1,0 +1,6 @@
+name = "mps_parser"
+uuid = "b4cd1e38-1e24-11e8-3319-93036a3eb9f3"
+version = "0.1.0"
+authors = ["Some One <someone@email.com>"]
+
+[deps]
