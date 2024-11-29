@@ -178,7 +178,7 @@ template <typename T> __device__ void mycpy(T const *src, T *dst) {
   }
 }
 
-template <int n_threads, int n_var, int n_constr, int n_terms>
+template <bool DEBUG, int n_threads, int n_var, int n_constr, int n_terms>
 __global__ void
 traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
          solution_t<n_var, n_constr> const *const queue, // SDF
@@ -273,9 +273,11 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
         next.obj += problem->obj[cur.index] * val;
       }
     }
-    if (threadIdx.x == 0) {
-      printf("blockidx %d, val %d, kill_switch %d dqidx %d\n", blockIdx.x, val,
-             kill_switch, dqidx);
+    if constexpr (DEBUG) {
+      if (threadIdx.x == 0) {
+        printf("blockidx %d, val %d, kill_switch %d dqidx %d\n", blockIdx.x, val,
+               kill_switch, dqidx);
+      }
     }
 
     if (threadIdx.x == 0) {
@@ -311,7 +313,7 @@ template <typename T> __device__ T broadcast(T const &x) {
   __syncthreads();
   return s;
 }
-template <uint32_t n_threads, int n_var, int n_constr>
+template <bool DEBUG, uint32_t n_threads, int n_var, int n_constr>
 __global__ void
 update_bounds(solution_t<n_var, n_constr> const *const delta_queue,
               uint32_t *delta_mask, uint32_t delta_q_size,
@@ -319,16 +321,21 @@ update_bounds(solution_t<n_var, n_constr> const *const delta_queue,
   uint32_t best_idx = 0;
   int best_val = std::numeric_limits<int>::max();
   for (int i = threadIdx.x; i < delta_q_size; i += blockDim.x) {
-    printf("delta_queue[%d].index %d obj %d\n", i, delta_queue[i].index,
-           delta_queue[i].obj);
+    if constexpr (DEBUG) {
+      printf("delta_queue[%d].index %d obj %d\n", i, delta_queue[i].index,
+             delta_queue[i].obj);
+    }
     if (delta_queue[i].index == n_var && delta_queue[i].obj < best_val) {
       best_idx = i;
       best_val = delta_queue[i].obj;
     }
   }
-  if (best_idx != 0 || best_val != std::numeric_limits<int>::max())
-    printf("threadIdx.x %d, best_idx %d best_val %d\n", threadIdx.x, best_idx,
-           best_val);
+  if constexpr (DEBUG) {
+    if (best_idx != 0 || best_val != std::numeric_limits<int>::max()) {
+      printf("threadIdx.x %d, best_idx %d best_val %d\n", threadIdx.x, best_idx,
+             best_val);
+    }
+  }
   cuda::std::pair<int, uint32_t> candidate {best_val, best_idx};
   using BlockReduce =
       cub::BlockReduce<cuda::std::pair<int, uint32_t> , n_threads>;
@@ -339,9 +346,12 @@ update_bounds(solution_t<n_var, n_constr> const *const delta_queue,
                             [](auto const &a, auto const &b) {
                               return a.first < b.first ? a : b;
                             }));
-  if (threadIdx.x == 0) {
-    printf("r_best_val %d, r_best_idx %d\n", r_best_val, r_best_idx);
+  if constexpr (DEBUG) {
+    if (threadIdx.x == 0) {
+      printf("r_best_val %d, r_best_idx %d\n", r_best_val, r_best_idx);
+    }
   }
+
   if (r_best_val < best->obj) {
     mycpy(&delta_queue[r_best_idx], best);
   }
@@ -417,7 +427,8 @@ problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> problem_from_mps(const MPSData
     if (type == RowInfo::Type::NONE) {
       continue;
     }
-    const int coeff = mps_data.rhs.at(constraint_name);
+    const auto iter = mps_data.rhs.find(constraint_name);
+    const int coeff = iter != mps_data.rhs.end() ? iter->second : 0.0;
     const int constraint_idx = idx_from_name.at(constraint_name);
     const int coeff_to_store = type == RowInfo::Type::GREATER_THAN ? -coeff : coeff;
     rhs[constraint_idx] = coeff_to_store;
@@ -519,28 +530,42 @@ solution_t<NUM_VARS, NUM_CONSTRAINTS> search(
                         cudaMemcpyDeviceToHost));
 
   // fmt::println("launching kernel for problem \n{}", problem);
-  fmt::println("initial solution \n{}", initial_solution);
+  // fmt::println("initial solution \n{}", initial_solution);
 
-  int itermax = 20;
+  // int itermax = 20;
   auto const q_max_size = n_blocks * NUM_VARS;
   std::vector<Solution> cpu_queue(q_max_size);
   std::vector<uint32_t> cpu_delta_mask(n_blocks * n_outcomes);
 
+  int iter = 0;
   while (q_size > 0) {
+    const bool DEBUG = false;
     auto const n_blocks_l = std::min(q_size, n_blocks);
-    fmt::println("-----------------------------\nthere {} jobs in the queue, "
-                 "launching {}",
-                 q_size, n_blocks_l);
-    traverse<n_threads><<<n_blocks_l, n_threads>>>(
-        cuda_prob, queue + q_size - n_blocks_l, delta_mask, delta_queue);
+    if (DEBUG) {
+      fmt::println("-----------------------------\nthere {} jobs in the queue, "
+                   "launching {}",
+                   q_size, n_blocks_l);
+    }
+    if (DEBUG) {
+      traverse<true, n_threads><<<n_blocks_l, n_threads>>>(
+          cuda_prob, queue + q_size - n_blocks_l, delta_mask, delta_queue);
+    } else {
+      traverse<false, n_threads><<<n_blocks_l, n_threads>>>(
+          cuda_prob, queue + q_size - n_blocks_l, delta_mask, delta_queue);
+    }
     q_size -= n_blocks_l;
   
     // Delta mask is not currently used. Iterates through the newly queued items,
     // finds the fully assigned items and potentially updates the best solution
-    update_bounds<1024><<<1, 1024>>>(delta_queue, delta_mask,
-                                     n_blocks_l * n_outcomes, best_solution);
+    if (DEBUG) {
+      update_bounds<true, 1024><<<1, 1024>>>(delta_queue, delta_mask,
+                                       n_blocks_l * n_outcomes, best_solution);
+    } else {
+      update_bounds<false, 1024><<<1, 1024>>>(delta_queue, delta_mask,
+                                       n_blocks_l * n_outcomes, best_solution);
+    }
   
-    {
+    if (DEBUG) {
       cpu_delta_mask.resize(n_blocks_l * n_outcomes);
       cuda_error(cudaMemcpy(cpu_delta_mask.data(), delta_mask,
                             sizeof(uint32_t) * n_blocks_l * n_outcomes,
@@ -552,27 +577,45 @@ solution_t<NUM_VARS, NUM_CONSTRAINTS> search(
                                   delta_mask, delta_cumsum,
                                   n_blocks_l * n_outcomes);
     push_back<n_threads><<<n_blocks_l * n_outcomes, n_threads>>>(
-        delta_cumsum, delta_queue, queue);
+        delta_cumsum, delta_queue, queue + q_size);
     uint32_t q_delta = 0;
     cuda_error(cudaMemcpy(&q_delta, delta_cumsum + n_blocks_l * n_outcomes - 1,
                           sizeof(uint32_t), cudaMemcpyDeviceToHost));
-    {
-      fmt::println("q_delta: {}", q_delta);
-    }
-    q_size += q_delta;
-    cuda_error(cudaMemcpy(cpu_queue.data(), queue, sizeof(Solution) * q_size,
-                          cudaMemcpyDeviceToHost));
-    for (int i = 0; i < q_size; i++) {
-      fmt::println("queue[{}]: \n{}", i, cpu_queue[i]);
-    }
-    {
+
+    if (iter % 10000 == 0 || true) {
       Solution cpu_best_sol;
       cuda_error(cudaMemcpy(&cpu_best_sol, best_solution, sizeof(Solution),
                             cudaMemcpyDeviceToHost));
-      fmt::println("best solution: \n{}", cpu_best_sol);
+      fmt::println("Iter {} queue_size: {} blocks_launched: {} q_delta: {} best sol obj: {}",
+          iter, q_size, n_blocks_l, q_delta, cpu_best_sol.obj);
     }
-    if (--itermax == 0)
-      break;
+    q_size += q_delta;
+
+    if (DEBUG){
+      fmt::println("q_delta: {}", q_delta);
+
+      cuda_error(cudaMemcpy(cpu_queue.data(), queue, sizeof(Solution) * q_size,
+                            cudaMemcpyDeviceToHost));
+      for (int i = 0; i < q_size; i++) {
+        fmt::println("queue[{}]: \n{}", i, cpu_queue[i]);
+      }
+      {
+        Solution cpu_best_sol;
+        cuda_error(cudaMemcpy(&cpu_best_sol, best_solution, sizeof(Solution),
+                              cudaMemcpyDeviceToHost));
+        fmt::println("best solution: \n{}", cpu_best_sol);
+      }
+    }
+    // if (--itermax == 0)
+    //   break;
+    iter++;
+  }
+
+  {
+    Solution cpu_best_sol;
+    cuda_error(cudaMemcpy(&cpu_best_sol, best_solution, sizeof(Solution),
+                          cudaMemcpyDeviceToHost));
+    fmt::println("best solution: \n{}", cpu_best_sol);
   }
 
   return {};
@@ -582,7 +625,7 @@ template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
 void solve_gpu_impl(const MPSData &mps_data) {
   // Convert the problem
   const auto problem = problem_from_mps<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>(mps_data);
-  fmt::println("Problem: {}", problem);
+  fmt::println("Problem: {}", mps_data.name);
 
   // Allocate space
   constexpr auto n_blocks = 1024;
@@ -612,6 +655,12 @@ void solve_gpu(const MPSData &mps_data) {
     solve_gpu_impl<9, 14, 54>(mps_data);
   } else if (num_vars == 15 && num_constraints == 37 && num_nonzero == 135) {
     solve_gpu_impl<15, 37, 135>(mps_data);
+  } else if (num_vars == 45 && num_constraints == 332 && num_nonzero == 1079) {
+    solve_gpu_impl<45, 332, 1079>(mps_data);
+  } else if (num_vars == 100 && num_constraints == 1 && num_nonzero == 100) {
+    solve_gpu_impl<100, 1, 100>(mps_data);
+  } else if (num_vars == 201 && num_constraints == 133 && num_nonzero == 1923) {
+    solve_gpu_impl<201, 133, 1923>(mps_data);
   } else {
     fmt::println("Unhandled problem size!");
   }

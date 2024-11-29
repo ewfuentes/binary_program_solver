@@ -86,7 +86,8 @@ template <int n, int m> struct fmt::formatter<solution_t<n, m>> {
         ss << "x_" << i << " = 1";
       else
         ss << "x_" << i << " = inf";
-      ss << "\n";
+      ss << " ";
+      // ss << "\n";
     }
     return fmt::format_to(ctx.out(), "{}", ss.str());
   }
