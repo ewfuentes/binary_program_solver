@@ -146,6 +146,25 @@ template <int n_var, int n_constr> struct alignas(8) solution_t {
 // Must include after definition of problem_t and solution_t
 #include "gpu_solver_formatter.hh"
 
+template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
+struct GPUSolverMemory {
+  problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> *problem;
+
+  solution_t<NUM_VARS, NUM_CONSTRAINTS> *queue;
+  size_t queue_size;
+  size_t queue_max_size;
+
+  solution_t<NUM_VARS, NUM_CONSTRAINTS> *best_solution;
+
+  solution_t<NUM_VARS, NUM_CONSTRAINTS> *delta_queue;
+  uint32_t *delta_mask;
+  uint32_t *delta_cumsum;
+  size_t delta_queue_size;
+
+  void *scan_workspace;
+  size_t scan_workspace_size;
+};
+
 template <typename T> __device__ void mycpy(T const *src, T *dst) {
 
   using I = uint32_t;
@@ -381,14 +400,84 @@ problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> problem_from_mps(const MPSData
 }
 
 template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
+GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
+  const problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> &problem,
+  const int n_blocks, const int n_threads, const int n_outcomes) {
+  GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> out;
+
+  // decltype(problem) *cuda_prob = nullptr;
+  cuda_error(cudaMalloc((void **)&out.problem, sizeof(problem)));
+  cuda_error(cudaMemcpy((void *)out.problem, &problem, sizeof(problem),
+                        cudaMemcpyHostToDevice));
+
+  solution_t<NUM_VARS, NUM_CONSTRAINTS> init_sol{
+    .index = 0,
+    .upper_bound = std::numeric_limits<int32_t>::max(),
+    .obj = 0,
+    .var = bitset<NUM_VARS*2>::full(true),
+    .rhs = problem.rhs,
+    .rhs_n = problem.rhs_n,
+  };
+
+  // decltype(init_sol) *queue = nullptr;
+  // auto const q_max_size = n_blocks * decltype(problem)::n_var;
+  // std::vector<decltype(init_sol)> cpu_queue(q_max_size);
+  out.queue_max_size = n_blocks * NUM_VARS;
+  cuda_error(cudaMalloc((void **)&out.queue, sizeof(init_sol) * out.queue_max_size));
+  cuda_error(cudaMemcpy((void *)out.queue, &init_sol, sizeof(init_sol),
+                        cudaMemcpyHostToDevice));
+  out.queue_size = 1;
+  
+  // decltype(init_sol) *best_solution = nullptr;
+  {
+    cuda_error(cudaMalloc((void **)&out.best_solution, sizeof(init_sol)));
+    auto cpu_best_sol = init_sol;
+    cpu_best_sol.obj = std::numeric_limits<int>::max();
+    cuda_error(cudaMemcpy(out.best_solution, &cpu_best_sol, sizeof(init_sol),
+                          cudaMemcpyHostToDevice));
+  }
+  
+  // decltype(init_sol) *delta_queue = nullptr;
+  out.delta_queue_size = n_blocks * n_outcomes;
+  cuda_error(cudaMalloc((void **)&out.delta_queue,
+                        sizeof(init_sol) * out.delta_queue_size));
+  
+  // uint32_t *delta_mask = nullptr;
+  // uint32_t *delta_cumsum = nullptr;
+  cuda_error(cudaMalloc((void **)&out.delta_mask,
+                        sizeof(uint32_t) * out.delta_queue_size));
+  
+  cuda_error(cudaMalloc((void **)&out.delta_cumsum,
+                        sizeof(uint32_t) * out.delta_queue_size));
+  cuda_error(
+      cudaMemset(out.delta_mask, 0, sizeof(uint32_t) * out.delta_queue_size));
+  cuda_error(
+      cudaMemset(out.delta_cumsum, 0, sizeof(uint32_t) * out.delta_queue_size));
+  
+  out.scan_workspace = nullptr;
+  out.scan_workspace_size = 0;
+  cub::DeviceScan::InclusiveSum(out.scan_workspace, out.scan_workspace_size, out.delta_mask,
+                                out.delta_cumsum, n_blocks * n_outcomes);
+  cuda_error(cudaMalloc(&out.scan_workspace, out.scan_workspace_size));
+
+  return out;
+};
+
+template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
 void solve_gpu_impl(const MPSData &mps_data) {
   // Convert the problem
   const auto problem = problem_from_mps<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>(mps_data);
   fmt::println("Problem: {}", problem);
 
   // Allocate space
+  constexpr auto n_blocks = 1024;
+  constexpr auto n_threads = 64;
+  constexpr auto n_outcomes = 2;
+  auto gpu_memory = allocate_gpu_memory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>(
+      problem, n_blocks, n_threads, n_outcomes);
 
   // Solve the problem
+
 }
 
 void solve_gpu(const MPSData &mps_data) {
@@ -414,87 +503,11 @@ void solve_gpu(const MPSData &mps_data) {
 }
 
 // int main() {
-//   /*
-// max x + 2y + 3z + 4w
-// s.t.
-// x + y = 1
-// z + w = 1
-// */
-//   cuda::std::array<cuda::std::tuple<int, pair<int>>, 4> const var_2_constr{
-//       cuda::std::make_tuple(0, pair<int>{0, 1}),
-//       cuda::std::make_tuple(1, pair<int>{0, 1}),
-//       cuda::std::make_tuple(2, pair<int>{1, 1}),
-//       cuda::std::make_tuple(3, pair<int>{1, 1})};
-// 
-//   cuda::std::array<cuda::std::tuple<int, pair<int>>, 4> const constr_2_var{
-//       cuda::std::make_tuple(0, pair<int>{0, 1}),
-//       cuda::std::make_tuple(0, pair<int>{1, 1}),
-//       cuda::std::make_tuple(1, pair<int>{2, 1}),
-//       cuda::std::make_tuple(1, pair<int>{3, 1})};
-//   auto const problem = problem_t<4, 2, 4>{
-//       .obj = {1, 2, 3, 4},
-//       .rhs = {1, 1},
-//       .rhs_n = {2, 2},
-//       .is_eq = bitset<2>::full(true),
-//       .var_2_constr = range_array<pair<int>, 4, 4>::from_triplet(var_2_constr),
-//       .constr_2_var = range_array<pair<int>, 2, 4>::from_triplet(constr_2_var),
-//   };
-// 
-//   decltype(problem) *cuda_prob = nullptr;
-//   cuda_error(cudaMalloc((void **)&cuda_prob, sizeof(problem)));
-//   cuda_error(cudaMemcpy((void *)cuda_prob, &problem, sizeof(problem),
-//                         cudaMemcpyHostToDevice));
-//   solution_t<4, 2> init_sol{.index = 0,
-//                             .upper_bound = std::numeric_limits<int32_t>::max(),
-//                             .obj = 0,
-//                             .var = bitset<8>::full(true),
-//                             .rhs = problem.rhs,
-//                             .rhs_n = {0, 0}};
-//   constexpr auto n_blocks = 1024;
-//   constexpr auto n_threads = 64;
-//   constexpr auto n_outcomes = 2;
-//   decltype(init_sol) *queue = nullptr;
-//   auto const q_max_size = n_blocks * decltype(problem)::n_var;
-//   std::vector<decltype(init_sol)> cpu_queue(q_max_size);
-//   cuda_error(cudaMalloc((void **)&queue, sizeof(init_sol) * q_max_size));
-//   cuda_error(cudaMemcpy((void *)queue, &init_sol, sizeof(init_sol),
-//                         cudaMemcpyHostToDevice));
-// 
-//   decltype(init_sol) *best_solution = nullptr;
-//   {
-//     cuda_error(cudaMalloc((void **)&best_solution, sizeof(init_sol)));
-//     auto cpu_best_sol = init_sol;
-//     cpu_best_sol.obj = std::numeric_limits<int>::max();
-//     cuda_error(cudaMemcpy(best_solution, &cpu_best_sol, sizeof(init_sol),
-//                           cudaMemcpyHostToDevice));
-//   }
-// 
-//   decltype(init_sol) *delta_queue = nullptr;
-//   cuda_error(cudaMalloc((void **)&delta_queue,
-//                         sizeof(init_sol) * n_blocks * n_outcomes));
-// 
-//   uint32_t *delta_mask = nullptr;
-//   uint32_t *delta_cumsum = nullptr;
-//   cuda_error(cudaMalloc((void **)&delta_mask,
-//                         sizeof(uint32_t) * n_blocks * n_outcomes));
-// 
-//   cuda_error(cudaMalloc((void **)&delta_cumsum,
-//                         sizeof(uint32_t) * n_blocks * n_outcomes));
-//   cuda_error(
-//       cudaMemset(delta_mask, 0, sizeof(uint32_t) * n_blocks * n_outcomes));
-//   cuda_error(
-//       cudaMemset(delta_cumsum, 0, sizeof(uint32_t) * n_blocks * n_outcomes));
-//   auto q_size = 1;
-// 
-//   void *d_temp_storage = nullptr;
-//   size_t temp_storage_bytes = 0;
-//   cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, delta_mask,
-//                                 delta_cumsum, n_blocks * n_outcomes);
-//   cuda_error(cudaMalloc(&d_temp_storage, temp_storage_bytes));
-// 
 //   fmt::println("launching kernel for problem \n{}", problem);
 //   fmt::println("initial solution \n{}", init_sol);
 //   int itermax = 20;
+//   auto const q_max_size = n_blocks * decltype(problem)::n_var;
+//   std::vector<decltype(init_sol)> cpu_queue(q_max_size);
 //   std::vector<uint32_t> cpu_delta_mask(n_blocks * n_outcomes);
 //   while (q_size > 0) {
 //     auto const n_blocks_l = std::min(q_size, n_blocks);
