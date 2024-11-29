@@ -236,9 +236,9 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
     auto const var_idx = cur.index;
     // Iterate over the constraints that contain the newly assigned variable
     // The contstraints are processed in parallel
-    auto const var_begin = problem->var_2_constr.idx[var_idx];
-    auto const var_end = problem->var_2_constr.idx[var_idx + 1];
-    for (uint32_t i = threadIdx.x + var_begin; i < var_end && !kill_switch;
+    auto const i_begin = problem->var_2_constr.idx[var_idx];
+    auto const i_end = problem->var_2_constr.idx[var_idx + 1];
+    for (uint32_t i = threadIdx.x + i_begin; i < i_end && !kill_switch;
          i += blockDim.x) {
       // Note to self: this is an uncoalesced read. Is the problem also small enough
       // to read into shared memory?
@@ -255,10 +255,14 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
       auto const is_eq = problem->is_eq.get(constr_idx);
       if (rhs_n == rhs_exp) {
         if ((is_eq && next.rhs[constr_idx] != 0) ||
-            (!is_eq && next.rhs[constr_idx] > 0)) {
+            (!is_eq && next.rhs[constr_idx] < 0)) {
           // The current partial assignment violates a constraint
           // stop checking constraints and bailout
           kill_switch = true;
+          if (DEBUG) {
+            printf("blockidx %d constraint id: %d value: %d is_eq: %d completely assigned, but not feasible\n",
+                blockIdx.x, constr_idx, next.rhs[constr_idx], is_eq);
+          }
           break;
         }
       }
@@ -653,6 +657,8 @@ void solve_gpu(const MPSData &mps_data) {
 
   if (num_vars == 9 && num_constraints == 14 && num_nonzero == 54) {
     solve_gpu_impl<9, 14, 54>(mps_data);
+  } else if (num_vars == 10 && num_constraints == 2 && num_nonzero == 10) {
+    solve_gpu_impl<10, 2, 10>(mps_data);
   } else if (num_vars == 15 && num_constraints == 37 && num_nonzero == 135) {
     solve_gpu_impl<15, 37, 135>(mps_data);
   } else if (num_vars == 45 && num_constraints == 332 && num_nonzero == 1079) {
