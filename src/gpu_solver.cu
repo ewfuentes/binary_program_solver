@@ -351,6 +351,8 @@ problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> problem_from_mps(const MPSData
   cuda::std::array<int, NUM_CONSTRAINTS> n_rhs;
   bitset<NUM_CONSTRAINTS> is_eq;
 
+  n_rhs.fill(0);
+
   const auto idx_from_name = get_ordered_vars_and_constraints<NUM_VARS, NUM_CONSTRAINTS>(mps_data);
   std::unordered_map<std::string, RowInfo::Type> constraint_type_from_name;
   std::transform(mps_data.rows.begin(), mps_data.rows.end(),
@@ -468,14 +470,6 @@ template <size_t n_blocks, size_t n_threads, size_t n_outcomes,
 solution_t<NUM_VARS, NUM_CONSTRAINTS> search(
     GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
   using Solution = solution_t<NUM_VARS, NUM_CONSTRAINTS>;
-
-  // fmt::println("launching kernel for problem \n{}", problem);
-  // fmt::println("initial solution \n{}", init_sol);
-  int itermax = 20;
-  auto const q_max_size = n_blocks * NUM_VARS;
-  std::vector<Solution> cpu_queue(q_max_size);
-  std::vector<uint32_t> cpu_delta_mask(n_blocks * n_outcomes);
-
   auto &cuda_prob = gpu_memory.problem;
   auto &queue = gpu_memory.queue;
   auto &q_size = gpu_memory.queue_size;
@@ -485,6 +479,18 @@ solution_t<NUM_VARS, NUM_CONSTRAINTS> search(
   auto &best_solution = gpu_memory.best_solution;
   auto &d_temp_storage = gpu_memory.scan_workspace;
   auto &temp_storage_bytes = gpu_memory.scan_workspace_size;
+
+  Solution initial_solution;
+  cuda_error(cudaMemcpy(&initial_solution, queue, sizeof(Solution),
+                        cudaMemcpyDeviceToHost));
+
+  // fmt::println("launching kernel for problem \n{}", problem);
+  fmt::println("initial solution \n{}", initial_solution);
+
+  int itermax = 20;
+  auto const q_max_size = n_blocks * NUM_VARS;
+  std::vector<Solution> cpu_queue(q_max_size);
+  std::vector<uint32_t> cpu_delta_mask(n_blocks * n_outcomes);
 
   while (q_size > 0) {
     auto const n_blocks_l = std::min(q_size, n_blocks);

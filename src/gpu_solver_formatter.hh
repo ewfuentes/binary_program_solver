@@ -28,7 +28,7 @@ struct fmt::formatter<problem_t<n, m, n_terms>> {
     ss << fmt::format("problem_t<{}, {}, {}>\n", n, m, n_terms);
     ss << "min ";
     for (int i = 0; i < n; i++) {
-      ss << t.obj[i] << "x_" << i;
+      ss << t.obj[i] << " x_" << i;
       if (i != n - 1)
         ss << " + ";
     }
@@ -44,14 +44,14 @@ struct fmt::formatter<problem_t<n, m, n_terms>> {
           ss << " + ";
         if (A[constr_idx][var_idx] != 1)
           ss << A[constr_idx][var_idx];
-        ss << "x_" << var_idx;
+        ss << " x_" << var_idx;
         not_first = true;
       }
       if (t.is_eq.get(constr_idx))
         ss << " = ";
       else
         ss << " <= ";
-      ss << t.rhs[constr_idx] << "\n";
+      ss << t.rhs[constr_idx] << fmt::format(" (num terms: {})", t.rhs_n.at(constr_idx)) << "\n";
     }
 
     return fmt::format_to(ctx.out(), "{}", ss.str());
