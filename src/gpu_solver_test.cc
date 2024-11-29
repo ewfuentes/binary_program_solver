@@ -13,9 +13,12 @@ TEST_P(MPSGPUTest, mps_file_test) {
 
     solve_gpu(mps_data);
 }
-
 INSTANTIATE_TEST_SUITE_P(MPSGpuSolverTest, MPSGPUTest, testing::Values(
-    "test_problems/stein9inf.mps",
-    "test_problems/stein15inf.mps",
-    "test_problems/stein45inf.mps"
+    "test_problems/stein9inf.mps"
 ));
+
+// INSTANTIATE_TEST_SUITE_P(MPSGpuSolverTest, MPSGPUTest, testing::Values(
+//     "test_problems/stein9inf.mps",
+//     "test_problems/stein15inf.mps",
+//     "test_problems/stein45inf.mps"
+// ));

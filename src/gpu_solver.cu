@@ -120,6 +120,8 @@ template <int n, int m, int n_terms> struct problem_t {
   auto static constexpr n_constr = m;
   cuda::std::array<int, n> obj;
   cuda::std::array<int, m> rhs;
+  // This tracks the number of variable in each constraint that have already
+  // been assigned.
   cuda::std::array<int, m> rhs_n;
   bitset<m> is_eq;
   // first item is constraint index, second item is coefficient
@@ -188,27 +190,42 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
   __shared__ sol_t cur;
   __shared__ sol_t next;
 
+  // Each block has access to n_threads to compute some successors starting
+  // from a single queued item
+  // Copy the queued item to shared memory
   mycpy(qel, &cur);
   __syncthreads();
-  if (cur.index >= problem->n_var) {
-    if (threadIdx.x <= 1)
+  // If the current item has been fully assigned, don't queue any more items
+  // if (cur.index >= problem->n_var) {
+  if (cur.index >= n_var) { // this is known at compile time, so save a read
+    if (threadIdx.x <= 1) {
       delta_mask[2 * blockIdx.x + threadIdx.x] = 0;
+    }
     return;
   }
 
+  // Iterate over possible assignments to the next variable
   for (auto val : {false, true}) {
     __syncthreads();
     auto const dqidx = 2 * blockIdx.x + val;
+    // Seems like all threads write this value. Is that problematic?
+    // My guess is that it isn't because of the __syncthreads.
     kill_switch = false;
-    if (!cur.var.get(cur.index * 2 + val)) {
-      if (threadIdx.x == 0)
-        delta_mask[dqidx] = 0;
 
+    // Check if the current assignment has been previously ruled out
+    if (!cur.var.get(cur.index * 2 + val)) {
+      // Since all threads read the same value, there is no divergence across warps here.
+      if (threadIdx.x == 0) {
+        delta_mask[dqidx] = 0;
+      }
       continue;
     }
     __syncthreads();
+    // Make a copy of the current partial solution
     mycpy(&cur, &next);
     __syncthreads();
+    // Is there any benefit to doing the different writes in different threads?
+    // I don't think there is...
     if (threadIdx.x == 0)
       next.var.set(cur.index * 2, val == false);
     if (threadIdx.x == 1)
@@ -217,12 +234,21 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
       next.index++;
     __syncthreads();
     auto const var_idx = cur.index;
+    // Iterate over the constraints that contain the newly assigned variable
+    // The contstraints are processed in parallel
     auto const var_begin = problem->var_2_constr.idx[var_idx];
     auto const var_end = problem->var_2_constr.idx[var_idx + 1];
     for (uint32_t i = threadIdx.x + var_begin; i < var_end && !kill_switch;
          i += blockDim.x) {
+      // Note to self: this is an uncoalesced read. Is the problem also small enough
+      // to read into shared memory?
       auto const [constr_idx, coeff] = problem->var_2_constr.val[i];
+      // Remove the assigned variable from the constraint by updating the RHS
       next.rhs[constr_idx] -= coeff * val;
+      // Update the number of assigned variables for this constraint. 
+      // Note to self: if we change the meaning of rhs_n to be the number of variables
+      // left to assign and decrement instead, we could save a read of the expected
+      // number of variables per constraint from the problem
       ++next.rhs_n[constr_idx];
       auto const rhs_n = next.rhs_n[constr_idx];
       auto const rhs_exp = problem->rhs_n[constr_idx];
@@ -230,6 +256,8 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
       if (rhs_n == rhs_exp) {
         if ((is_eq && next.rhs[constr_idx] != 0) ||
             (!is_eq && next.rhs[constr_idx] > 0)) {
+          // The current partial assignment violates a constraint
+          // stop checking constraints and bailout
           kill_switch = true;
           break;
         }
@@ -238,10 +266,12 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
 
     __syncthreads();
     if (threadIdx.x == 0) {
-      if (kill_switch)
+      if (kill_switch) {
         next.obj = std::numeric_limits<int>::max();
-      else
+      } else {
+        // Update the realized cost
         next.obj += problem->obj[cur.index] * val;
+      }
     }
     if (threadIdx.x == 0) {
       printf("blockidx %d, val %d, kill_switch %d dqidx %d\n", blockIdx.x, val,
@@ -249,10 +279,12 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
     }
 
     if (threadIdx.x == 0) {
+      // Note that if the assignment has been completely assigned, we set delta_mask to 0
       delta_mask[dqidx] = !kill_switch && (next.index < n_var);
     }
     mycpy(&next, delta_queue + dqidx);
-
+    // I wonder if this syncthreads is required given that the loop starts with one
+    // Perhaps it's a good habit to do so after copying using mycpy
     __syncthreads();
   }
 }
@@ -273,8 +305,9 @@ __global__ void push_back(uint32_t *delta_cumsum,
 
 template <typename T> __device__ T broadcast(T const &x) {
   __shared__ T s;
-  if (threadIdx.x == 0)
+  if (threadIdx.x == 0) {
     s = x;
+  }
   __syncthreads();
   return s;
 }
@@ -306,8 +339,9 @@ update_bounds(solution_t<n_var, n_constr> const *const delta_queue,
                             [](auto const &a, auto const &b) {
                               return a.first < b.first ? a : b;
                             }));
-  if (threadIdx.x == 0)
+  if (threadIdx.x == 0) {
     printf("r_best_val %d, r_best_idx %d\n", r_best_val, r_best_idx);
+  }
   if (r_best_val < best->obj) {
     mycpy(&delta_queue[r_best_idx], best);
   }
@@ -418,7 +452,7 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
     .obj = 0,
     .var = bitset<NUM_VARS*2>::full(true),
     .rhs = problem.rhs,
-    .rhs_n = problem.rhs_n,
+    .rhs_n = {},
   };
 
   // decltype(init_sol) *queue = nullptr;
@@ -501,24 +535,31 @@ solution_t<NUM_VARS, NUM_CONSTRAINTS> search(
         cuda_prob, queue + q_size - n_blocks_l, delta_mask, delta_queue);
     q_size -= n_blocks_l;
   
+    // Delta mask is not currently used. Iterates through the newly queued items,
+    // finds the fully assigned items and potentially updates the best solution
     update_bounds<1024><<<1, 1024>>>(delta_queue, delta_mask,
                                      n_blocks_l * n_outcomes, best_solution);
   
-    cpu_delta_mask.resize(n_blocks_l * n_outcomes);
-    cuda_error(cudaMemcpy(cpu_delta_mask.data(), delta_mask,
-                          sizeof(uint32_t) * n_blocks_l * n_outcomes,
-                          cudaMemcpyDeviceToHost));
-    fmt::println("delta_mask: {}", fmt::join(cpu_delta_mask, ", "));
+    {
+      cpu_delta_mask.resize(n_blocks_l * n_outcomes);
+      cuda_error(cudaMemcpy(cpu_delta_mask.data(), delta_mask,
+                            sizeof(uint32_t) * n_blocks_l * n_outcomes,
+                            cudaMemcpyDeviceToHost));
+      fmt::println("delta_mask: {}", fmt::join(cpu_delta_mask, ", "));
+    }
+    // Not sure if it matters, but it seems like this sum could be done in place
     cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
                                   delta_mask, delta_cumsum,
                                   n_blocks_l * n_outcomes);
     push_back<n_threads><<<n_blocks_l * n_outcomes, n_threads>>>(
         delta_cumsum, delta_queue, queue);
-    uint32_t q_detla = 0;
-    cuda_error(cudaMemcpy(&q_detla, delta_cumsum + n_blocks_l * n_outcomes - 1,
+    uint32_t q_delta = 0;
+    cuda_error(cudaMemcpy(&q_delta, delta_cumsum + n_blocks_l * n_outcomes - 1,
                           sizeof(uint32_t), cudaMemcpyDeviceToHost));
-    fmt::println("q_delta: {}", q_detla);
-    q_size += q_detla;
+    {
+      fmt::println("q_delta: {}", q_delta);
+    }
+    q_size += q_delta;
     cuda_error(cudaMemcpy(cpu_queue.data(), queue, sizeof(Solution) * q_size,
                           cudaMemcpyDeviceToHost));
     for (int i = 0; i < q_size; i++) {
