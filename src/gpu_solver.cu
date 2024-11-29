@@ -132,7 +132,7 @@ template <int n, int m, int n_terms> struct problem_t {
 
 template <int n_var, int n_constr> struct alignas(8) solution_t {
   int index;
-  int upper_bound;
+  int remaining_lower_bound;
   int obj;
   bitset<n_var * 2> var;
 
@@ -181,6 +181,7 @@ template <typename T> __device__ void mycpy(T const *src, T *dst) {
 template <bool DEBUG, int n_threads, int n_var, int n_constr, int n_terms>
 __global__ void
 traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
+         solution_t<n_var, n_constr> const *const best_solution,
          solution_t<n_var, n_constr> const *const queue, // SDF
          uint32_t *delta_mask,                           // SDF
          solution_t<n_var, n_constr> *delta_queue) {
@@ -288,12 +289,16 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
     __syncthreads();
 
     if (threadIdx.x == 0) {
+      const int coeff = problem->obj[cur.index];
+      next.obj +=  coeff * val;
+      next.remaining_lower_bound -= std::min(0, coeff) * val;
+      if (next.obj + next.remaining_lower_bound > best_solution->obj) {
+        kill_switch = true;
+      }
       if (kill_switch) {
         next.obj = std::numeric_limits<int>::max();
-      } else {
-        // Update the realized cost
-        next.obj += problem->obj[cur.index] * val;
-      }
+        next.remaining_lower_bound = 0;
+      } 
     }
     if constexpr (DEBUG) {
       if (threadIdx.x == 0) {
@@ -479,9 +484,11 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
   cuda_error(cudaMemcpy((void *)out.problem, &problem, sizeof(problem),
                         cudaMemcpyHostToDevice));
 
+  const int max_objective = std::accumulate(problem.obj.begin(), problem.obj.end(), 0,
+      [](const int accum, const int value){ return accum + std::min(0, value);});
   solution_t<NUM_VARS, NUM_CONSTRAINTS> init_sol{
     .index = 0,
-    .upper_bound = std::numeric_limits<int32_t>::max(),
+    .remaining_lower_bound = max_objective,
     .obj = 0,
     .var = bitset<NUM_VARS*2>::full(true),
     .rhs = problem.rhs,
@@ -502,6 +509,7 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
     cuda_error(cudaMalloc((void **)&out.best_solution, sizeof(init_sol)));
     auto cpu_best_sol = init_sol;
     cpu_best_sol.obj = std::numeric_limits<int>::max();
+    cpu_best_sol.remaining_lower_bound = 0;
     cuda_error(cudaMemcpy(out.best_solution, &cpu_best_sol, sizeof(init_sol),
                           cudaMemcpyHostToDevice));
   }
@@ -570,10 +578,10 @@ solution_t<NUM_VARS, NUM_CONSTRAINTS> search(
     }
     if (DEBUG) {
       traverse<true, n_threads><<<n_blocks_l, n_threads>>>(
-          cuda_prob, queue + q_size - n_blocks_l, delta_mask, delta_queue);
+          cuda_prob, best_solution, queue + q_size - n_blocks_l, delta_mask, delta_queue);
     } else {
       traverse<false, n_threads><<<n_blocks_l, n_threads>>>(
-          cuda_prob, queue + q_size - n_blocks_l, delta_mask, delta_queue);
+          cuda_prob, best_solution, queue + q_size - n_blocks_l, delta_mask, delta_queue);
     }
     q_size -= n_blocks_l;
   
@@ -604,7 +612,7 @@ solution_t<NUM_VARS, NUM_CONSTRAINTS> search(
     cuda_error(cudaMemcpy(&q_delta, delta_cumsum + n_blocks_l * n_outcomes - 1,
                           sizeof(uint32_t), cudaMemcpyDeviceToHost));
 
-    if (iter % 10000 == 0 || true) {
+    if (iter % 100000 == 0) {
       Solution cpu_best_sol;
       cuda_error(cudaMemcpy(&cpu_best_sol, best_solution, sizeof(Solution),
                             cudaMemcpyDeviceToHost));

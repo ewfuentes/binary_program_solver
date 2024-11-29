@@ -69,7 +69,7 @@ template <int n, int m> struct fmt::formatter<solution_t<n, m>> {
     std::stringstream ss;
     ss << fmt::format("solution_t<{}, {}>\n", n, m);
     ss << "index: " << t.index << "\n";
-    ss << "upper_bound: " << t.upper_bound << "\n";
+    ss << "remaining_lower_bound: " << t.remaining_lower_bound << "\n";
     ss << "obj: " << t.obj << "\n";
     ss << fmt::format("rhs: {}\n", t.rhs);
     ss << fmt::format("rhs_n: {}\n", t.rhs_n);
