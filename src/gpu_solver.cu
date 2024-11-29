@@ -463,6 +463,74 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
   return out;
 };
 
+template <size_t n_blocks, size_t n_threads, size_t n_outcomes,
+         int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
+solution_t<NUM_VARS, NUM_CONSTRAINTS> search(
+    GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
+  using Solution = solution_t<NUM_VARS, NUM_CONSTRAINTS>;
+
+  // fmt::println("launching kernel for problem \n{}", problem);
+  // fmt::println("initial solution \n{}", init_sol);
+  int itermax = 20;
+  auto const q_max_size = n_blocks * NUM_VARS;
+  std::vector<Solution> cpu_queue(q_max_size);
+  std::vector<uint32_t> cpu_delta_mask(n_blocks * n_outcomes);
+
+  auto &cuda_prob = gpu_memory.problem;
+  auto &queue = gpu_memory.queue;
+  auto &q_size = gpu_memory.queue_size;
+  auto &delta_queue = gpu_memory.delta_queue;
+  auto &delta_mask = gpu_memory.delta_mask;
+  auto &delta_cumsum = gpu_memory.delta_cumsum;
+  auto &best_solution = gpu_memory.best_solution;
+  auto &d_temp_storage = gpu_memory.scan_workspace;
+  auto &temp_storage_bytes = gpu_memory.scan_workspace_size;
+
+  while (q_size > 0) {
+    auto const n_blocks_l = std::min(q_size, n_blocks);
+    fmt::println("-----------------------------\nthere {} jobs in the queue, "
+                 "launching {}",
+                 q_size, n_blocks_l);
+    traverse<n_threads><<<n_blocks_l, n_threads>>>(
+        cuda_prob, queue + q_size - n_blocks_l, delta_mask, delta_queue);
+    q_size -= n_blocks_l;
+  
+    update_bounds<1024><<<1, 1024>>>(delta_queue, delta_mask,
+                                     n_blocks_l * n_outcomes, best_solution);
+  
+    cpu_delta_mask.resize(n_blocks_l * n_outcomes);
+    cuda_error(cudaMemcpy(cpu_delta_mask.data(), delta_mask,
+                          sizeof(uint32_t) * n_blocks_l * n_outcomes,
+                          cudaMemcpyDeviceToHost));
+    fmt::println("delta_mask: {}", fmt::join(cpu_delta_mask, ", "));
+    cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
+                                  delta_mask, delta_cumsum,
+                                  n_blocks_l * n_outcomes);
+    push_back<n_threads><<<n_blocks_l * n_outcomes, n_threads>>>(
+        delta_cumsum, delta_queue, queue);
+    uint32_t q_detla = 0;
+    cuda_error(cudaMemcpy(&q_detla, delta_cumsum + n_blocks_l * n_outcomes - 1,
+                          sizeof(uint32_t), cudaMemcpyDeviceToHost));
+    fmt::println("q_delta: {}", q_detla);
+    q_size += q_detla;
+    cuda_error(cudaMemcpy(cpu_queue.data(), queue, sizeof(Solution) * q_size,
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < q_size; i++) {
+      fmt::println("queue[{}]: \n{}", i, cpu_queue[i]);
+    }
+    {
+      Solution cpu_best_sol;
+      cuda_error(cudaMemcpy(&cpu_best_sol, best_solution, sizeof(Solution),
+                            cudaMemcpyDeviceToHost));
+      fmt::println("best solution: \n{}", cpu_best_sol);
+    }
+    if (--itermax == 0)
+      break;
+  }
+
+  return {};
+}
+
 template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
 void solve_gpu_impl(const MPSData &mps_data) {
   // Convert the problem
@@ -477,7 +545,7 @@ void solve_gpu_impl(const MPSData &mps_data) {
       problem, n_blocks, n_threads, n_outcomes);
 
   // Solve the problem
-
+  search<n_blocks, n_threads, n_outcomes>(gpu_memory);
 }
 
 void solve_gpu(const MPSData &mps_data) {
@@ -502,52 +570,3 @@ void solve_gpu(const MPSData &mps_data) {
   }
 }
 
-// int main() {
-//   fmt::println("launching kernel for problem \n{}", problem);
-//   fmt::println("initial solution \n{}", init_sol);
-//   int itermax = 20;
-//   auto const q_max_size = n_blocks * decltype(problem)::n_var;
-//   std::vector<decltype(init_sol)> cpu_queue(q_max_size);
-//   std::vector<uint32_t> cpu_delta_mask(n_blocks * n_outcomes);
-//   while (q_size > 0) {
-//     auto const n_blocks_l = std::min(q_size, n_blocks);
-//     fmt::println("-----------------------------\nthere {} jobs in the queue, "
-//                  "launching {}",
-//                  q_size, n_blocks_l);
-//     traverse<n_threads><<<n_blocks_l, n_threads>>>(
-//         cuda_prob, queue + q_size - n_blocks_l, delta_mask, delta_queue);
-//     q_size -= n_blocks_l;
-// 
-//     update_bounds<1024><<<1, 1024>>>(delta_queue, delta_mask,
-//                                      n_blocks_l * n_outcomes, best_solution);
-// 
-//     cpu_delta_mask.resize(n_blocks_l * n_outcomes);
-//     cuda_error(cudaMemcpy(cpu_delta_mask.data(), delta_mask,
-//                           sizeof(uint32_t) * n_blocks_l * n_outcomes,
-//                           cudaMemcpyDeviceToHost));
-//     fmt::println("delta_mask: {}", fmt::join(cpu_delta_mask, ", "));
-//     cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
-//                                   delta_mask, delta_cumsum,
-//                                   n_blocks_l * n_outcomes);
-//     push_back<n_threads><<<n_blocks_l * n_outcomes, n_threads>>>(
-//         delta_cumsum, delta_queue, queue);
-//     uint32_t q_detla = 0;
-//     cuda_error(cudaMemcpy(&q_detla, delta_cumsum + n_blocks_l * n_outcomes - 1,
-//                           sizeof(uint32_t), cudaMemcpyDeviceToHost));
-//     fmt::println("q_delta: {}", q_detla);
-//     q_size += q_detla;
-//     cuda_error(cudaMemcpy(cpu_queue.data(), queue, sizeof(init_sol) * q_size,
-//                           cudaMemcpyDeviceToHost));
-//     for (int i = 0; i < q_size; i++) {
-//       fmt::println("queue[{}]: \n{}", i, cpu_queue[i]);
-//     }
-//     {
-//       decltype(init_sol) cpu_best_sol;
-//       cuda_error(cudaMemcpy(&cpu_best_sol, best_solution, sizeof(init_sol),
-//                             cudaMemcpyDeviceToHost));
-//       fmt::println("best solution: \n{}", cpu_best_sol);
-//     }
-//     if (--itermax == 0)
-//       break;
-//   }
-// };
