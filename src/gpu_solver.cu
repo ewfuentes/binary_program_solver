@@ -266,9 +266,27 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
           break;
         }
       }
-    }
 
+      // For this constraint, iterate over the remaining variables to be assigned and check
+      // if it is optimistically still feasible to satisfy this constraint
+      int optimistic_constraint_value = 0;
+      const int j_begin = problem->constr_2_var.idx[constr_idx] + rhs_n;
+      const int j_end = problem->constr_2_var.idx[constr_idx+1];
+      for (int j = j_begin; j < j_end; j++) {
+        const auto &[_, coeff] = problem->constr_2_var.val[j];
+        optimistic_constraint_value += std::min(0, coeff);
+      }
+      if (optimistic_constraint_value > next.rhs[constr_idx]) {
+        kill_switch=true;
+        if (DEBUG) {
+          printf("blockidx %d constraint id: %d cannot be optimistically satisfied %d > %d\n",
+              blockIdx.x, constr_idx, optimistic_constraint_value, next.rhs[constr_idx]);
+        }
+        break;
+      }
+    }
     __syncthreads();
+
     if (threadIdx.x == 0) {
       if (kill_switch) {
         next.obj = std::numeric_limits<int>::max();
@@ -629,7 +647,7 @@ template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
 void solve_gpu_impl(const MPSData &mps_data) {
   // Convert the problem
   const auto problem = problem_from_mps<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>(mps_data);
-  fmt::println("Problem: {}", mps_data.name);
+  fmt::println("Problem: {}", problem);
 
   // Allocate space
   constexpr auto n_blocks = 1024;
