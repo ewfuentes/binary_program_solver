@@ -165,8 +165,3 @@ for problem = [
 
     print(model)
 end
-
-file = "src/test_problems/stein9inf.mps"
-model = read_from_file(file)
-ob = objective_function(model)
-ob.terms
