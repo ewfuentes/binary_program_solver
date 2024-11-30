@@ -69,11 +69,6 @@ set_target_properties(gpu_solver PROPERTIES
 target_link_libraries(gpu_solver PUBLIC load_mps)
 
 
-# do not link with eigen
-add_executable(solver solver.cu)
-target_link_libraries(solver fmt::fmt)
-
-
 # TEST GO BELOW THIS
 
 include(GoogleTest)

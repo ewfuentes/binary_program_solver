@@ -1,5 +1,5 @@
 #pragma once
-
+#include <fmt/format.h>
 template <int n, int m, int n_terms>
 struct fmt::formatter<problem_t<n, m, n_terms>> {
   template <typename ParseContext> constexpr auto parse(ParseContext &ctx) {
