@@ -12,8 +12,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE Release) # bad form
-# set(CMAKE_BUILD_TYPE Debug)
-
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -fPIC -diag-suppress 3013 --expt-relaxed-constexpr --generate-line-info -t 8")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wall -pipe -Wextra -Wno-register -Wfatal-errors -Wextra -Wno-missing-field-initializers -g -fconcepts-diagnostics-depth=10")
@@ -25,9 +23,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-  fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG        0c9fce2ffefecfdce794e1859584e25877b7b592) # 11.0.2
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt
+    GIT_TAG 0c9fce2ffefecfdce794e1859584e25877b7b592) # 11.0.2
 FetchContent_MakeAvailable(fmt)
 
 find_package(GTest REQUIRED)
@@ -57,16 +55,27 @@ add_executable(vector_add vector_add.cu)
 
 
 
+foreach(target
+    glass-sc
+    p0201
+    p2m2p1m1p0n100
+    pb-market-split8-70-4
+    sample
+    stein15inf
+    stein45inf
+    # stein9inf
+)
+    set(conv_exec "solve_${target}")
+    add_executable(${conv_exec} converted/${target}.cu)
+    target_link_libraries(${conv_exec} PRIVATE fmt::fmt)
+endforeach()
+
 # Add CPU solver
 add_library(cpu_solver cpu_solver.cc)
 set_target_properties(cpu_solver PROPERTIES
     PUBLIC_HEADER cpu_solver.hh)
 target_link_libraries(cpu_solver PUBLIC binary_program load_mps bp_from_mps)
 
-add_library(gpu_solver gpu_solver.cu gpu_solver_formatter.hh)
-set_target_properties(gpu_solver PROPERTIES
-    PUBLIC_HEADER gpu_solver.hh)
-target_link_libraries(gpu_solver PUBLIC load_mps)
 
 
 # TEST GO BELOW THIS
@@ -95,9 +104,3 @@ configure_file(test_problems/glass-sc.mps test_problems/glass-sc.mps)
 add_executable(cpu_solver_test cpu_solver_test.cc)
 target_link_libraries(cpu_solver_test PRIVATE GTest::gtest GTest::gtest_main cpu_solver)
 add_test(NAME cpu_solver_test COMMAND cpu_solver_test)
-
-add_executable(gpu_solver_test gpu_solver_test.cc)
-target_link_libraries(gpu_solver_test PRIVATE GTest::gtest GTest::gtest_main gpu_solver load_mps)
-add_test(NAME gpu_solver_test COMMAND gpu_solver_test)
-
-
