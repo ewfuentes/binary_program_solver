@@ -64,7 +64,6 @@ for problem = [
     for i in all_constraints(model, include_variable_in_set_constraints=false)
         @show i
     end
-    println(model)
     cpp = let
         constraints = Set(all_constraints(model, include_variable_in_set_constraints=false))
         variables = Set(all_variables(model))
@@ -73,6 +72,7 @@ for problem = [
         coeffs = Dict(
             c => Dict(i => normalized_coefficient(c, i) for i in varx if normalized_coefficient(c, i) != 0) for c in constraints
         )
+        weights = objective_function(model).terms
         ordered_vars = VariableRef[]
         while !isempty(varx)
             c, coeff = argmin(coeffs) do (c, coeff)
@@ -83,8 +83,20 @@ for problem = [
                 delete!(coeffs, c)
                 continue
             end
-            # @show c, length(coeff)
-            x = first(keys(coeff))
+
+            ox = argmax(varx) do x
+                abs(get(weights, x, 0))
+            end
+            
+            x = if length(coeff) <= 5 || get(weights, ox, 0) == 0
+                # @show c, length(coeff)
+                x = argmax(keys(coeff)) do x
+                    abs(get(weights, x, 0))
+                end
+            else 
+                ox
+            end
+
             push!(ordered_vars, x)
 
             delete!(varx, x)
@@ -92,7 +104,7 @@ for problem = [
                 delete!(coeff, x)
             end
         end
-
+        
         println("ordering: ", ordered_vars)
 
         var_to_idx = Dict(v => i - 1 for (i, v) in enumerate(ordered_vars))
@@ -163,5 +175,4 @@ for problem = [
         println(io, cpp)
     end
 
-    print(model)
 end
