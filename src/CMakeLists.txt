@@ -56,13 +56,13 @@ add_executable(vector_add vector_add.cu)
 
 
 foreach(target
-    glass-sc
+        # glass-sc
     p0201
     p2m2p1m1p0n100
-    pb-market-split8-70-4
-    sample
-    stein15inf
-    stein45inf
+    # pb-market-split8-70-4
+    # sample
+    # stein15inf
+    # stein45inf
     # stein9inf
 )
     set(conv_exec "solve_${target}")

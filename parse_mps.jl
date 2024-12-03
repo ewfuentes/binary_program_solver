@@ -1,13 +1,77 @@
 using JuMP, Gurobi
 
+function prioritize_smaller_constraints(model)
+    constraints = Set(all_constraints(model, include_variable_in_set_constraints=false))
+    variables = Set(all_variables(model))
+    varx = copy(variables)
+    c = first(constraints)
+    coeffs = Dict(
+        c => Dict(i => normalized_coefficient(c, i)
+                  for i in varx if normalized_coefficient(c, i) != 0)
+                    for c in constraints)
+    weights = objective_function(model).terms
+    ordered_vars = VariableRef[]
+    while !isempty(varx)
+        c, coeff = argmin(coeffs) do (c, coeff)
+            length(coeff)
+        end
+
+        if length(coeff) == 0
+            delete!(coeffs, c)
+            continue
+        end
+
+        ox = argmax(varx) do x
+            abs(get(weights, x, 0))
+        end
+        
+        x = if length(coeff) <= 5 || get(weights, ox, 0) == 0
+            # @show c, length(coeff)
+            x = argmax(keys(coeff)) do x
+                abs(get(weights, x, 0))
+            end
+        else 
+            ox
+        end
+
+        push!(ordered_vars, x)
+
+        delete!(varx, x)
+        for (c, coeff) in coeffs
+            delete!(coeff, x)
+        end
+    end
+    return ordered_vars
+end
+
+function sorter(k1, k2, terms)
+    v1 = get(terms, k1, 0.0)
+    v2 = get(terms, k2, 0.0)
+    if v1 != v2
+        v1 > v2  # Ascending order by value
+    else
+        name(k1) < name(k2)  # Ascending order by key
+    end
+end
+
+function prioritize_larger_objective_values(model)
+    variables = all_variables(model)
+    of = objective_function(model)
+    @show variables
+    @show of.terms
+    @show sort(variables, by=name)
+    @show typeof(variables)
+    return sort(variables, lt=(k1, k2) -> sorter(k1, k2, of.terms))
+end
+
 for problem = [
-    "glass-sc",
+    # "glass-sc",
     "p0201",
     "p2m2p1m1p0n100",
-    "pb-market-split8-70-4",
-    "sample",
-    "stein15inf",
-    "stein45inf",
+    # "pb-market-split8-70-4",
+    # "sample",
+    # "stein15inf",
+    # "stein45inf",
     # "stein9inf"
     ]
     file = "src/test_problems/$problem.mps"
@@ -65,45 +129,10 @@ for problem = [
         @show i
     end
     cpp = let
-        constraints = Set(all_constraints(model, include_variable_in_set_constraints=false))
         variables = Set(all_variables(model))
-        varx = copy(variables)
-        c = first(constraints)
-        coeffs = Dict(
-            c => Dict(i => normalized_coefficient(c, i) for i in varx if normalized_coefficient(c, i) != 0) for c in constraints
-        )
-        weights = objective_function(model).terms
-        ordered_vars = VariableRef[]
-        while !isempty(varx)
-            c, coeff = argmin(coeffs) do (c, coeff)
-                length(coeff)
-            end
-
-            if length(coeff) == 0
-                delete!(coeffs, c)
-                continue
-            end
-
-            ox = argmax(varx) do x
-                abs(get(weights, x, 0))
-            end
-            
-            x = if length(coeff) <= 5 || get(weights, ox, 0) == 0
-                # @show c, length(coeff)
-                x = argmax(keys(coeff)) do x
-                    abs(get(weights, x, 0))
-                end
-            else 
-                ox
-            end
-
-            push!(ordered_vars, x)
-
-            delete!(varx, x)
-            for (c, coeff) in coeffs
-                delete!(coeff, x)
-            end
-        end
+        constraints = Set(all_constraints(model, include_variable_in_set_constraints=false))
+        ordered_vars = prioritize_smaller_constraints(model)
+        # ordered_vars = prioritize_larger_objective_values(model)
         
         println("ordering: ", ordered_vars)
 
@@ -156,6 +185,9 @@ for problem = [
 
         """#include"../gpu_solver.cuh"
     int main(){
+        /*
+        $ordered_vars
+        */
         $cpp_var_2_constr
         $cpp_constr_2_var
         auto const problem = problem_t<$(length(variables)), $(length(constraints)), $(length(triplets))>{
