@@ -172,8 +172,22 @@ struct GPUSolverMemory {
   uint32_t *delta_cumsum;
   size_t delta_queue_size;
 
-  void *scan_workspace;
-  size_t scan_workspace_size;
+  void *workspace;
+  size_t workspace_size;
+};
+
+template<typename SolutionT>
+struct QueueCompare {
+  __device__ bool operator()(const SolutionT &a, const SolutionT &b) {
+    // We want items of lesser depth to appear first.
+    // For items of the same depth, we want items with a higher objective value to appear first
+    if (a.index < b.index) {
+      return true;
+    } else if (b.index < a.index) {
+      return false;
+    }
+    return a.obj + a.remaining_lower_bound > b.obj + b.remaining_lower_bound;
+  }
 };
 
 template <typename T> __device__ void mycpy(T const *src, T *dst) {
@@ -556,12 +570,16 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
   cuda_error(
       cudaMemset(out.delta_cumsum, 0, sizeof(uint32_t) * out.delta_queue_size));
 
-  out.scan_workspace = nullptr;
-  out.scan_workspace_size = 0;
-  cub::DeviceScan::InclusiveSum(out.scan_workspace, out.scan_workspace_size,
+  size_t scan_workspace_size;
+  size_t sort_workspace_size = 0;
+  cub::DeviceScan::InclusiveSum(nullptr, scan_workspace_size,
                                 out.delta_mask, out.delta_cumsum,
                                 n_blocks * n_outcomes);
-  cuda_error(cudaMalloc(&out.scan_workspace, out.scan_workspace_size));
+  cub::DeviceMergeSort::SortKeys(nullptr, sort_workspace_size,
+                                out.queue, n_blocks * NUM_VARS,
+                                QueueCompare<solution_t<NUM_VARS, NUM_CONSTRAINTS>>{});
+  out.workspace_size = std::max(scan_workspace_size, sort_workspace_size);
+  cuda_error(cudaMalloc(&out.workspace, out.workspace_size));
 
   return out;
 };
@@ -578,8 +596,10 @@ search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
   auto &delta_mask = gpu_memory.delta_mask;
   auto &delta_cumsum = gpu_memory.delta_cumsum;
   auto &best_solution = gpu_memory.best_solution;
-  auto &d_temp_storage = gpu_memory.scan_workspace;
-  auto &temp_storage_bytes = gpu_memory.scan_workspace_size;
+  auto &d_temp_storage = gpu_memory.workspace;
+  auto &temp_storage_bytes = gpu_memory.workspace_size;
+
+  constexpr int SORT_AFTER_ITERS = 1000;
 
   Solution initial_solution;
   cuda_error(cudaMemcpy(&initial_solution, queue, sizeof(Solution),
@@ -587,7 +607,7 @@ search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
 
   constexpr bool DEBUG = false;
 
-  int itermax = 1000000000;
+  int itermax = 1'000'000'000;
   auto const q_max_size = n_blocks * NUM_VARS;
   std::vector<Solution> cpu_queue(q_max_size);
   std::vector<uint32_t> cpu_delta_mask(n_blocks * n_outcomes);
@@ -638,6 +658,11 @@ search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
                    iter, q_size, n_blocks_l, q_delta, cpu_best_sol.obj);
     }
     q_size += q_delta;
+
+    if (iter % SORT_AFTER_ITERS == 0) {
+       cub::DeviceMergeSort::SortKeys(
+           d_temp_storage, temp_storage_bytes, queue, q_size, QueueCompare<Solution>{});
+    }
 
     if (DEBUG) {
       fmt::println("q_delta: {}", q_delta);
