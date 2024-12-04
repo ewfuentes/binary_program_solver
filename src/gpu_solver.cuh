@@ -201,37 +201,48 @@ template <typename T> __device__ void mycpy(T const *src, T *dst) {
   }
 }
 
-template <bool DEBUG, int n_threads, int n_var, int n_constr, int n_terms>
-__global__ void
-traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
+template <bool DEBUG, int max_var_to_assign, int n_var, int n_constr, int n_terms>
+__device__ void
+local_dfs(problem_t<n_var, n_constr, n_terms> const *const problem,
          solution_t<n_var, n_constr> const *const best_solution,
-         solution_t<n_var, n_constr> const *const queue, // SDF
-         uint32_t *delta_mask,                           // SDF
-         solution_t<n_var, n_constr> *delta_queue) {
+          const int remaining_depth,
+          const int n_outcomes,
+          const solution_t<n_var, n_constr> &cur,
+          solution_t<n_var, n_constr> *delta_queue,
+          uint32_t *delta_mask,                           // SDF
+          int &output_idx) {
   using sol_t = solution_t<n_var, n_constr>;
-  sol_t const *__restrict__ const qel = queue + blockIdx.x;
-  __shared__ bool kill_switch;
-  __shared__ sol_t cur;
-  __shared__ sol_t next;
-
-  // Each block has access to n_threads to compute some successors starting
-  // from a single queued item
-  // Copy the queued item to shared memory
-  mycpy(qel, &cur);
-  __syncthreads();
-  // If the current item has been fully assigned, don't queue any more items
-  // if (cur.index >= problem->n_var) {
-  if (cur.index >= n_var) { // this is known at compile time, so save a read
-    if (threadIdx.x <= 1) {
-      delta_mask[2 * blockIdx.x + threadIdx.x] = 0;
+  // The address of shared memory appears to be the same across function calls. 
+  // That is, if we are at least one level deep into the recursion, &cur == &next.
+  // As a result, we need to bound the recursion depth
+  __shared__ sol_t next_arr[max_var_to_assign];
+  __shared__ bool kill_switch_arr[max_var_to_assign];
+  sol_t &next = next_arr[remaining_depth];
+  bool &kill_switch = kill_switch_arr[remaining_depth];
+  if (remaining_depth == 0) {
+    const size_t dqidx = n_outcomes * blockIdx.x + output_idx;
+    mycpy(&cur, &delta_queue[dqidx]);
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      delta_mask[dqidx] = cur.index < n_var;
+    }
+    output_idx++;
+    if constexpr (DEBUG) {
+      if (threadIdx.x == 0) {
+        printf("blockidx %d dqidx %lu cur_index: %d\n", blockIdx.x, dqidx, cur.index);
+      }
     }
     return;
   }
 
-  // Iterate over possible assignments to the next variable
   for (auto val : {false, true}) {
     __syncthreads();
-    auto const dqidx = 2 * blockIdx.x + val;
+    if constexpr (DEBUG) {
+      if (threadIdx.x == 0) {
+        printf("%*sblockIdx: %d Remaining Depth: %d assignment: %d cur depth: %d cur_addr: %p next_addr: %p\r\n",
+            remaining_depth, "", blockIdx.x, remaining_depth, val, cur.index, &cur, &next);
+      }
+    }
     // Seems like all threads write this value. Is that problematic?
     // My guess is that it isn't because of the __syncthreads.
     kill_switch = false;
@@ -240,9 +251,6 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
     if (!cur.var.get(cur.index * 2 + val)) {
       // Since all threads read the same value, there is no divergence across
       // warps here.
-      if (threadIdx.x == 0) {
-        delta_mask[dqidx] = 0;
-      }
       continue;
     }
     __syncthreads();
@@ -285,9 +293,9 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
           // stop checking constraints and bailout
           kill_switch = true;
           if (DEBUG) {
-            printf("blockidx %d constraint id: %d value: %d is_eq: %d "
+            printf("%*sblockidx %d constraint id: %d value: %d is_eq: %d "
                    "completely assigned, but not feasible\n",
-                   blockIdx.x, constr_idx, next.rhs[constr_idx], is_eq);
+                   remaining_depth, "", blockIdx.x, constr_idx, next.rhs[constr_idx], is_eq);
           }
           break;
         }
@@ -306,9 +314,9 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
       if (optimistic_constraint_value > next.rhs[constr_idx]) {
         kill_switch = true;
         if (DEBUG) {
-          printf("blockidx %d constraint id: %d cannot be optimistically "
+          printf("%*sblockidx %d constraint id: %d cannot be optimistically "
                  "satisfied %d > %d\n",
-                 blockIdx.x, constr_idx, optimistic_constraint_value,
+                 remaining_depth, "", blockIdx.x, constr_idx, optimistic_constraint_value,
                  next.rhs[constr_idx]);
         }
         break;
@@ -323,27 +331,48 @@ traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
       if (next.obj + next.remaining_lower_bound > best_solution->obj) {
         kill_switch = true;
       }
-      if (kill_switch) {
-        next.obj = std::numeric_limits<int>::max();
-        next.remaining_lower_bound = 0;
-      }
     }
-    if constexpr (DEBUG) {
-      if (threadIdx.x == 0) {
-        printf("blockidx %d, val %d, kill_switch %d dqidx %d\n", blockIdx.x,
-               val, kill_switch, dqidx);
-      }
+    if (kill_switch) {
+      continue;
     }
+    local_dfs<DEBUG, max_var_to_assign>(problem, best_solution, remaining_depth-1, n_outcomes,
+        next, delta_queue, delta_mask, output_idx);
+  }
+}
 
-    if (threadIdx.x == 0) {
-      // Note that if the assignment has been completely assigned, we set
-      // delta_mask to 0
-      delta_mask[dqidx] = !kill_switch && (next.index < n_var);
+template <bool DEBUG, int max_var_to_assign, int n_threads, int n_var, int n_constr, int n_terms>
+__global__ void
+traverse(problem_t<n_var, n_constr, n_terms> const *const problem,
+         solution_t<n_var, n_constr> const *const best_solution,
+         solution_t<n_var, n_constr> const *const queue, // SDF
+         uint32_t *delta_mask,                           // SDF
+         solution_t<n_var, n_constr> *delta_queue) {
+  using sol_t = solution_t<n_var, n_constr>;
+  sol_t const *__restrict__ const qel = queue + blockIdx.x;
+  __shared__ sol_t cur;
+
+  // Each block has access to n_threads to compute some successors starting
+  // from a single queued item
+  // Copy the queued item to shared memory
+  mycpy(qel, &cur);
+  __syncthreads();
+  // If the current item has been fully assigned, don't queue any more items
+  // if (cur.index >= problem->n_var) {
+  if (cur.index >= n_var) { // this is known at compile time, so save a read
+    if (threadIdx.x <= 1) {
+      delta_mask[2 * blockIdx.x + threadIdx.x] = 0;
     }
-    mycpy(&next, delta_queue + dqidx);
-    // I wonder if this syncthreads is required given that the loop starts with
-    // one Perhaps it's a good habit to do so after copying using mycpy
-    __syncthreads();
+    return;
+  }
+
+  int output_idx = 0;
+  const int n_outcomes = 1 << max_var_to_assign;
+  const int num_vars_to_assign = std::min(max_var_to_assign, n_var - cur.index);
+  // Iterate over possible assignments to the next variable
+  local_dfs<DEBUG, max_var_to_assign>(problem, best_solution, num_vars_to_assign, n_outcomes,
+      cur, delta_queue, delta_mask, output_idx);
+  for (int idx = output_idx + threadIdx.x; idx < n_outcomes; idx += blockDim.x) {
+    delta_mask[n_outcomes * blockIdx.x + idx] = 0;
   }
 }
 
@@ -519,6 +548,8 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
   cuda_error(cudaMemcpy((void *)out.problem, &problem, sizeof(problem),
                         cudaMemcpyHostToDevice));
 
+  fmt::println("Allocating space for problem: {}", sizeof(problem));
+
   const int max_objective =
       std::accumulate(problem.obj.begin(), problem.obj.end(), 0,
                       [](const int accum, const int value) {
@@ -533,10 +564,12 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
       .rhs_n = {},
   };
 
+
   // decltype(init_sol) *queue = nullptr;
   // auto const q_max_size = n_blocks * decltype(problem)::n_var;
   // std::vector<decltype(init_sol)> cpu_queue(q_max_size);
   out.queue_max_size = n_blocks * NUM_VARS;
+  fmt::println("Allocating space for queue: {}", n_blocks * NUM_VARS * sizeof(init_sol));
   cuda_error(
       cudaMalloc((void **)&out.queue, sizeof(init_sol) * out.queue_max_size));
   cuda_error(cudaMemcpy((void *)out.queue, &init_sol, sizeof(init_sol),
@@ -555,14 +588,17 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
 
   // decltype(init_sol) *delta_queue = nullptr;
   out.delta_queue_size = n_blocks * n_outcomes;
+  fmt::println("Allocating space for delta queue: {}", n_blocks * n_outcomes * sizeof(init_sol));
   cuda_error(cudaMalloc((void **)&out.delta_queue,
                         sizeof(init_sol) * out.delta_queue_size));
 
   // uint32_t *delta_mask = nullptr;
   // uint32_t *delta_cumsum = nullptr;
+  fmt::println("Allocating space for delta mask: {}", n_blocks * n_outcomes);
   cuda_error(cudaMalloc((void **)&out.delta_mask,
                         sizeof(uint32_t) * out.delta_queue_size));
 
+  fmt::println("Allocating space for delta cumsum: {}", n_blocks * n_outcomes * sizeof(uint32_t));
   cuda_error(cudaMalloc((void **)&out.delta_cumsum,
                         sizeof(uint32_t) * out.delta_queue_size));
   cuda_error(
@@ -579,12 +615,13 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
                                 out.queue, n_blocks * NUM_VARS,
                                 QueueCompare<solution_t<NUM_VARS, NUM_CONSTRAINTS>>{});
   out.workspace_size = std::max(scan_workspace_size, sort_workspace_size);
+  fmt::println("Allocating space for workspace: {}", out.workspace_size);
   cuda_error(cudaMalloc(&out.workspace, out.workspace_size));
 
   return out;
 };
 
-template <size_t n_blocks, size_t n_threads, size_t n_outcomes, int NUM_VARS,
+template <size_t n_blocks, size_t n_threads, size_t max_var_to_assign, int NUM_VARS,
           int NUM_CONSTRAINTS, int NUM_NONZERO>
 solution_t<NUM_VARS, NUM_CONSTRAINTS>
 search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
@@ -600,6 +637,7 @@ search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
   auto &temp_storage_bytes = gpu_memory.workspace_size;
 
   constexpr int SORT_AFTER_ITERS = 1000;
+  constexpr int n_outcomes = 1 << max_var_to_assign;
 
   Solution initial_solution;
   cuda_error(cudaMemcpy(&initial_solution, queue, sizeof(Solution),
@@ -620,7 +658,7 @@ search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
                    "launching {}",
                    q_size, n_blocks_l);
     }
-    traverse<DEBUG, n_threads><<<n_blocks_l, n_threads>>>(
+    traverse<DEBUG, max_var_to_assign, n_threads><<<n_blocks_l, n_threads>>>(
         cuda_prob, best_solution, queue + q_size - n_blocks_l, delta_mask,
         delta_queue);
 
@@ -700,10 +738,11 @@ void solve_gpu_impl(const problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> &pro
   // Allocate space
   constexpr auto n_blocks = 1024;
   constexpr auto n_threads = 64;
-  constexpr auto n_outcomes = 2;
+  constexpr auto max_var_to_assign = 2;
+  constexpr auto n_outcomes = 1 << max_var_to_assign;
   auto gpu_memory = allocate_gpu_memory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>(
       problem, n_blocks, n_threads, n_outcomes);
 
   // Solve the problem
-  search<n_blocks, n_threads, n_outcomes>(gpu_memory);
+  search<n_blocks, n_threads, max_var_to_assign>(gpu_memory);
 }
