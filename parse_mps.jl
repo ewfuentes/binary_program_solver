@@ -18,12 +18,14 @@ function create_n_queens(N)
         @constraint(model, sum(LinearAlgebra.diag(reverse(x; dims = 1), i)) <= 1)
     end
 
+    # @objective(model, Min, sum((i * N + j) * x[i, j] for i in 1:N for j in 1:N))
+
     @show model
     return model
 end
 
 # Generate N queens problems
-queen_ns = 4:4:16
+queen_ns = 4:4:20
 for n in queen_ns
     model = create_n_queens(n)
     write_to_file(model, "src/test_problems/queens_$n.mps")
