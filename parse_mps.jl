@@ -1,6 +1,37 @@
 using JuMP, Gurobi
+import LinearAlgebra
 
-for problem = [
+function create_n_queens(N)
+    model = Model()
+
+    @variable(model, x[1:N, 1:N], Bin)
+
+    for i in 1:N
+        # There can only be a single queen in each row
+        @constraint(model, sum(x[i, :]) == 1)
+        # There can only be a single queen in each column 
+        @constraint(model, sum(x[:, 1]) == 1)
+    end
+
+    for i in -(N - 1):(N-1)
+        @constraint(model, sum(LinearAlgebra.diag(x, i)) <= 1)
+        @constraint(model, sum(LinearAlgebra.diag(reverse(x; dims = 1), i)) <= 1)
+    end
+
+    # @objective(model, Min, sum((i * N + j) * x[i, j] for i in 1:N for j in 1:N))
+
+    @show model
+    return model
+end
+
+# Generate N queens problems
+queen_ns = 4:4:20
+for n in queen_ns
+    model = create_n_queens(n)
+    write_to_file(model, "src/test_problems/queens_$n.mps")
+end
+
+problems = vcat([
     "glass-sc",
     "p0201",
     "p2m2p1m1p0n100",
@@ -9,7 +40,11 @@ for problem = [
     "stein15inf",
     "stein45inf",
     # "stein9inf"
-    ]
+   ], ["queens_$n" for n in queen_ns])
+
+@show problems
+
+for problem in problems 
     file = "src/test_problems/$problem.mps"
     model = read_from_file(file)
     # set_optimizer(model, Gurobi.Optimizer)
