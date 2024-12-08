@@ -14,8 +14,8 @@ function create_n_queens(N)
     end
 
     for i in -(N - 1):(N-1)
-        @constraint(model, sum(LinearAlgebra.diag(x, i)) == 1)
-        @constraint(model, sum(LinearAlgebra.diag(reverse(x; dims = 1), i)) == 1)
+        @constraint(model, sum(LinearAlgebra.diag(x, i)) <= 1)
+        @constraint(model, sum(LinearAlgebra.diag(reverse(x; dims = 1), i)) <= 1)
     end
 
     @show model
