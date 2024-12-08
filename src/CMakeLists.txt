@@ -68,6 +68,7 @@ foreach(target
     queens_8
     queens_12
     queens_16
+    queens_20
 )
     set(conv_exec "solve_${target}")
     add_executable(${conv_exec} converted/${target}.cu)
