@@ -1,0 +1,19 @@
+{
+  "file": "src/test_problems/sample.mps",
+  "itermax": 18446744073709551615,
+  "lower_bound": 0,
+  "max_time": 60,
+  "n_blocks": 7056704,
+  "n_constraints": 6,
+  "n_nonzeros_constr": 18,
+  "n_nonzeros_obj": 10,
+  "n_outcomes": 2,
+  "n_threads": 64,
+  "n_variables": 10,
+  "objective": 0,
+  "self": "sample",
+  "solver": "ours",
+  "status": "OPTIMAL",
+  "time": 2.668,
+  "upper_bound": 0
+}

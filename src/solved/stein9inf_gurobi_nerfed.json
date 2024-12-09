@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":9,"n_nonzeros_constr":14,"time":11.089226961135864,"lower_bound":1.0e100,"status":"INFEASIBLE","solver":"gurobi_nerfed","file":"src/test_problems/stein9inf.mps","upper_bound":1.0e100,"n_constraints":14,"n_variables":9}

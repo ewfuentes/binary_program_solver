@@ -154,10 +154,20 @@ for problem = [
         cpp_rhs_n = join(string.(rhs_n), ", ")
 
 
-        """#include"../gpu_solver.cuh"
-    int main(){
+        """#include"../gpu_solver.h"
+    int main(int argc, char **argv) {
         $cpp_var_2_constr
         $cpp_constr_2_var
+        std::string self = "$problem";
+        using namespace std::literals;
+        std::chrono::seconds duration = 1min;
+        if (argc >= 2){
+            duration = std::chrono::minutes(std::stoi(argv[1]));
+        }
+        auto const config = run_config{
+            .self = self,
+            .duration = duration
+        };
         auto const problem = problem_t<$(length(variables)), $(length(constraints)), $(length(triplets))>{
             .obj = {$cpp_obj},
             .rhs = {$cpp_rhs},
@@ -166,7 +176,7 @@ for problem = [
             .var_2_constr = range_array<pair<int>, $(length(variables)), $(length(triplets))>(var_2_constr),
             .constr_2_var = range_array<pair<int>, $(length(constraints)), $(length(triplets))>(constr_2_var),
         };
-        solve_gpu_impl(problem);
+        solve_gpu_impl(problem, config);
     }
     """
     end

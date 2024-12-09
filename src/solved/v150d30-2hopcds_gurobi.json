@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":150,"n_nonzeros_constr":7822,"time":1232.4817581176758,"lower_bound":36.0,"status":"TIME_LIMIT","solver":"gurobi","file":"src/test_problems/v150d30-2hopcds.mps","upper_bound":36.0,"n_constraints":7822,"n_variables":150}

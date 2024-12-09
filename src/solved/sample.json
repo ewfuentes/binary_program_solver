@@ -1,0 +1,15 @@
+{
+  "lower_bound": 0,
+  "n_blocks": 7056704,
+  "n_constraints": 6,
+  "n_nonzero": 18,
+  "n_outcomes": 2,
+  "n_threads": 64,
+  "n_vars": 10,
+  "objective": 0,
+  "self": "sample",
+  "solver": "ours",
+  "status": "OPTIMAL",
+  "time": 2.97,
+  "upper_bound": 0
+}

@@ -28,6 +28,8 @@ function solve(file, opt)
     set_time_limit_sec(model, 60 * 20)
     optimize!(model)
     x = Dict(
+        "solver"=> opt,
+        "file" => file,
         "time" => time() - start_time,
         "lower_bound" => objective_bound(model),
         "upper_bound" => objective_bound(model),

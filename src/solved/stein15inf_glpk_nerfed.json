@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":15,"n_nonzeros_constr":37,"time":9.263000011444092,"lower_bound":9.0,"status":"INFEASIBLE","solver":"glpk_nerfed","file":"src/test_problems/stein15inf.mps","upper_bound":9.0,"n_constraints":37,"n_variables":15}

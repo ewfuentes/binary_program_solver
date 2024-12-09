@@ -1,0 +1,1 @@
+{"time":6.6760101318359375,"objective":7615.0,"n_constraints":133,"lower_bound":7615.0,"status":"OPTIMAL","solver":"gurobi_nerfed","n_nonzeros_obj":201,"n_nonzeros_constr":133,"upper_bound":7615.0,"file":"src/test_problems/p0201.mps","n_variables":201}

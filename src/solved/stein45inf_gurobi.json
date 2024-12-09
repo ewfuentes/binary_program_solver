@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":45,"n_nonzeros_constr":332,"time":18.22719097137451,"lower_bound":1.0e100,"status":"INFEASIBLE","solver":"gurobi","file":"src/test_problems/stein45inf.mps","upper_bound":1.0e100,"n_constraints":332,"n_variables":45}

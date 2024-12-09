@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":2048,"n_nonzeros_constr":504451,"time":1288.2534639835358,"lower_bound":-1023.0,"status":"TIME_LIMIT","solver":"glpk","file":"src/test_problems/sorrell4.mps","upper_bound":-1023.0,"n_constraints":504451,"n_variables":2048}

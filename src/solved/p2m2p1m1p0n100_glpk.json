@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":100,"n_nonzeros_constr":1,"time":1208.8713948726654,"lower_bound":80424.0,"status":"TIME_LIMIT","solver":"glpk","file":"src/test_problems/p2m2p1m1p0n100.mps","upper_bound":80424.0,"n_constraints":1,"n_variables":100}
