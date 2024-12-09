@@ -1,0 +1,1 @@
+{"time":217.06462717056274,"objective":23.000000000000004,"n_constraints":6119,"lower_bound":23.000000000000004,"status":"OPTIMAL","solver":"gurobi_nerfed","n_nonzeros_obj":214,"n_nonzeros_constr":6119,"upper_bound":23.000000000000004,"file":"src/test_problems/glass-sc.mps","n_variables":214}

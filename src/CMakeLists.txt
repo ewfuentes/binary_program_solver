@@ -31,6 +31,7 @@ FetchContent_MakeAvailable(fmt)
 find_package(GTest REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # Add Binary Program 
 add_library(binary_program INTERFACE)
@@ -70,9 +71,9 @@ foreach(target
     queens_16
     queens_20
 )
-    set(conv_exec "solve_${target}")
+    set(conv_exec "${target}")
     add_executable(${conv_exec} converted/${target}.cu)
-    target_link_libraries(${conv_exec} PRIVATE fmt::fmt)
+    target_link_libraries(${conv_exec} PRIVATE fmt::fmt nlohmann_json::nlohmann_json)
 endforeach()
 
 # Add CPU solver

@@ -1,4 +1,4 @@
-
+#include <nlohmann/json.hpp>
 #include "gpu_solver.hh"
 
 #include <algorithm>
@@ -23,6 +23,8 @@
 #include <limits>
 #include <tuple>
 #include <vector>
+#include <fstream>
+#include <filesystem>
 
 #define STR_DETAIL(x) #x
 #define STR(x) STR_DETAIL(x)
@@ -156,6 +158,11 @@ template <int n_var, int n_constr> struct alignas(8) solution_t {
 
 // Must include after definition of problem_t and solution_t
 #include "gpu_solver_formatter.hh"
+struct run_config {
+  std::string self;
+  std::chrono::seconds duration;
+  size_t itermax =  std::numeric_limits<size_t>::max();
+};
 
 template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
 struct GPUSolverMemory {
@@ -164,7 +171,8 @@ struct GPUSolverMemory {
   solution_t<NUM_VARS, NUM_CONSTRAINTS> *queue;
   size_t queue_size;
   size_t queue_max_size;
-
+  size_t n_blocks;
+  
   solution_t<NUM_VARS, NUM_CONSTRAINTS> *best_solution;
 
   solution_t<NUM_VARS, NUM_CONSTRAINTS> *delta_queue;
@@ -510,10 +518,11 @@ problem_from_mps(const MPSData &mps_data) {
 
 template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
 GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
-    const problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> &problem,
-    const int n_blocks, const int n_threads, const int n_outcomes) {
-  GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> out;
+    const problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> &problem, const int n_threads, const int n_outcomes) {
+        // Allocate space
+  
 
+  GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> out;
   // decltype(problem) *cuda_prob = nullptr;
   cuda_error(cudaMalloc((void **)&out.problem, sizeof(problem)));
   cuda_error(cudaMemcpy((void *)out.problem, &problem, sizeof(problem),
@@ -524,6 +533,7 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
                       [](const int accum, const int value) {
                         return accum + std::min(0, value);
                       });
+                      
   solution_t<NUM_VARS, NUM_CONSTRAINTS> init_sol{
       .index = 0,
       .remaining_lower_bound = max_objective,
@@ -533,10 +543,18 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
       .rhs_n = {},
   };
 
-  // decltype(init_sol) *queue = nullptr;
+  {
+    size_t mf, ma;
+    cuda_error(cudaMemGetInfo(&mf, &ma));
+    fmt::println("free memory: {} max allocatable: {}\n", mf, ma);
+    out.n_blocks = std::max<long>(mf / (sizeof(init_sol) * (NUM_VARS + 100 + n_outcomes)), 1);
+    fmt::println("n_blocks: {}", out.n_blocks);
+  } 
+
+  // decltype(init_sol) *queue = ngpu_memory
   // auto const q_max_size = n_blocks * decltype(problem)::n_var;
   // std::vector<decltype(init_sol)> cpu_queue(q_max_size);
-  out.queue_max_size = n_blocks * NUM_VARS;
+  out.queue_max_size = out.n_blocks * NUM_VARS;
   cuda_error(
       cudaMalloc((void **)&out.queue, sizeof(init_sol) * out.queue_max_size));
   cuda_error(cudaMemcpy((void *)out.queue, &init_sol, sizeof(init_sol),
@@ -554,7 +572,7 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
   }
 
   // decltype(init_sol) *delta_queue = nullptr;
-  out.delta_queue_size = n_blocks * n_outcomes;
+  out.delta_queue_size = out.n_blocks * n_outcomes;
   cuda_error(cudaMalloc((void **)&out.delta_queue,
                         sizeof(init_sol) * out.delta_queue_size));
 
@@ -574,9 +592,9 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
   size_t sort_workspace_size = 0;
   cub::DeviceScan::InclusiveSum(nullptr, scan_workspace_size,
                                 out.delta_mask, out.delta_cumsum,
-                                n_blocks * n_outcomes);
+                                out.n_blocks * n_outcomes);
   cub::DeviceMergeSort::SortKeys(nullptr, sort_workspace_size,
-                                out.queue, n_blocks * NUM_VARS,
+                                out.queue, out.n_blocks * NUM_VARS,
                                 QueueCompare<solution_t<NUM_VARS, NUM_CONSTRAINTS>>{});
   out.workspace_size = std::max(scan_workspace_size, sort_workspace_size);
   cuda_error(cudaMalloc(&out.workspace, out.workspace_size));
@@ -584,11 +602,13 @@ GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> allocate_gpu_memory(
   return out;
 };
 
-template <size_t n_blocks, size_t n_threads, size_t n_outcomes, int NUM_VARS,
+template <size_t n_threads, size_t n_outcomes, int NUM_VARS,
           int NUM_CONSTRAINTS, int NUM_NONZERO>
-solution_t<NUM_VARS, NUM_CONSTRAINTS>
-search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
+std::pair<bool, solution_t<NUM_VARS, NUM_CONSTRAINTS>>
+search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory, run_config config) {
+
   using Solution = solution_t<NUM_VARS, NUM_CONSTRAINTS>;
+  auto const n_blocks = gpu_memory.n_blocks;
   auto &cuda_prob = gpu_memory.problem;
   auto &queue = gpu_memory.queue;
   auto &q_size = gpu_memory.queue_size;
@@ -607,14 +627,14 @@ search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
 
   constexpr bool DEBUG = false;
 
-  int itermax = 1'000'000'000;
-  auto const q_max_size = n_blocks * NUM_VARS;
-  std::vector<Solution> cpu_queue(q_max_size);
+  
+  std::vector<Solution> cpu_queue(gpu_memory.queue_max_size);
   std::vector<uint32_t> cpu_delta_mask(n_blocks * n_outcomes);
 
-  int iter = 0;
-  while (q_size > 0 && iter < itermax) {
-    auto const n_blocks_l = std::min(q_size, n_blocks);
+  size_t iter = 0;
+  auto const start_time = std::chrono::high_resolution_clock::now();
+  while (q_size > 0 && iter < config.itermax && start_time + config.duration > std::chrono::high_resolution_clock::now()) {
+    auto const n_blocks_l = std::min<size_t>(q_size, gpu_memory.n_blocks);
     if (DEBUG) {
       fmt::println("-----------------------------\nthere {} jobs in the queue, "
                    "launching {}",
@@ -682,28 +702,59 @@ search(GPUSolverMemory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> gpu_memory) {
     iter++;
   }
 
-  {
-    Solution cpu_best_sol;
-    cuda_error(cudaMemcpy(&cpu_best_sol, best_solution, sizeof(Solution),
-                          cudaMemcpyDeviceToHost));
-    fmt::println("best solution: \n{}", cpu_best_sol);
-  }
+  Solution cpu_best_sol;
+  cuda_error(cudaMemcpy(&cpu_best_sol, best_solution, sizeof(Solution),
+                        cudaMemcpyDeviceToHost));
+  fmt::println("best solution: \n{}", cpu_best_sol);
+  return {q_size == 0, cpu_best_sol};
 
-  return {};
 }
-
+template <typename T>
+size_t nonzeros(T const& x){
+  size_t z = 0;
+  for (auto i : x){
+    if (i != 0){
+      z++;
+    }
+  }
+  return z;
+} 
 template <int NUM_VARS, int NUM_CONSTRAINTS, int NUM_NONZERO>
-void solve_gpu_impl(const problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> &problem) {
+void solve_gpu_impl(const problem_t<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO> &problem, run_config config) {
+  auto const start_time = std::chrono::high_resolution_clock::now();
   // Convert the problem
   fmt::println("Problem: {}", problem);
 
-  // Allocate space
-  constexpr auto n_blocks = 1024;
   constexpr auto n_threads = 64;
   constexpr auto n_outcomes = 2;
-  auto gpu_memory = allocate_gpu_memory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>(
-      problem, n_blocks, n_threads, n_outcomes);
+
+
+  auto gpu_memory = allocate_gpu_memory<NUM_VARS, NUM_CONSTRAINTS, NUM_NONZERO>(problem, n_threads, n_outcomes);
 
   // Solve the problem
-  search<n_blocks, n_threads, n_outcomes>(gpu_memory);
+  auto const [done, sol] = search<n_threads, n_outcomes>(gpu_memory, config);
+
+  nlohmann::json j {
+  {"file", "src/test_problems/" + config.self + ".mps"},
+  {"max_time", config.duration.count()},
+  {"itermax", config.itermax},
+  {"lower_bound", sol.obj + sol.remaining_lower_bound},
+  {"n_blocks", gpu_memory.n_blocks},
+  {"n_constraints", NUM_CONSTRAINTS},
+  {"n_nonzeros_constr", NUM_NONZERO},
+  {"n_nonzeros_obj", nonzeros(problem.obj)},
+  {"n_outcomes", n_outcomes},
+  {"n_threads", n_threads},
+  {"n_variables", NUM_VARS},
+  {"objective", sol.obj},
+  {"objective", sol.obj},
+  {"self", config.self},
+  {"solver", "ours"},
+  {"status", done ? (sol.obj == std::numeric_limits<int>::max() ? "INFEASIBLE" : "OPTIMAL") : "TIMEOUT"},
+  {"time", std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::high_resolution_clock::now() - start_time).count() / 1000.0},
+  {"upper_bound", sol.obj}
+  };
+
+  std::ofstream("src/solved/" + config.self + "_ours.json") << j.dump(2);
+
 }

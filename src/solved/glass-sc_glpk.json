@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":214,"n_nonzeros_constr":6119,"time":1209.8241028785706,"lower_bound":17.0,"status":"TIME_LIMIT","solver":"glpk","file":"src/test_problems/glass-sc.mps","upper_bound":17.0,"n_constraints":6119,"n_variables":214}

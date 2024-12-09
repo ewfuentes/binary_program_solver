@@ -1,0 +1,12 @@
+{
+    "file": "src/test_problems/stein15inf.mps",
+    "lower_bound": 9.0,
+    "n_constraints": 37,
+    "n_nonzeros_constr": 37,
+    "n_nonzeros_obj": 15,
+    "n_variables": 15,
+    "solver": "glpk",
+    "status": "INFEASIBLE",
+    "time": 9.27277398109436,
+    "upper_bound": 9.0
+}

@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":1,"n_nonzeros_constr":17,"time":1210.516546010971,"lower_bound":0.0,"status":"TIME_LIMIT","solver":"gurobi_nerfed","file":"src/test_problems/pb-market-split8-70-4.mps","upper_bound":0.0,"n_constraints":17,"n_variables":71}

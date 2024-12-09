@@ -1,0 +1,1 @@
+{"time":5.252190113067627,"objective":0.0,"n_constraints":2,"lower_bound":0.0,"status":"OPTIMAL","solver":"glpk_nerfed","n_nonzeros_obj":10,"n_nonzeros_constr":2,"upper_bound":0.0,"file":"src/test_problems/sample.mps","n_variables":10}

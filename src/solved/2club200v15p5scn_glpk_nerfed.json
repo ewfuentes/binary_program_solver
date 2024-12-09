@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":200,"n_nonzeros_constr":17013,"time":1206.2924280166626,"lower_bound":-111.0,"status":"TIME_LIMIT","solver":"glpk_nerfed","file":"src/test_problems/2club200v15p5scn.mps","upper_bound":-111.0,"n_constraints":17013,"n_variables":200}

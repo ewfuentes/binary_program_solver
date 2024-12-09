@@ -1,1 +1,1 @@
-{"n_nonzeros_obj":201,"n_nonzeros_constr":133,"time":4.269881010055542,"lower_bound":7615.0,"status":"OPTIMAL","objective":7615.0,"upper_bound":7615.0,"n_constraints":133,"n_variables":201}
+{"time":6.483583211898804,"objective":7615.0,"n_constraints":133,"lower_bound":7615.0,"status":"OPTIMAL","solver":"gurobi","n_nonzeros_obj":201,"n_nonzeros_constr":133,"upper_bound":7615.0,"file":"src/test_problems/p0201.mps","n_variables":201}

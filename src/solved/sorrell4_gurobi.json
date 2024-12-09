@@ -1,0 +1,1 @@
+{"n_nonzeros_obj":2048,"n_nonzeros_constr":504451,"time":1215.4452731609344,"lower_bound":-35.0,"status":"TIME_LIMIT","solver":"gurobi","file":"src/test_problems/sorrell4.mps","upper_bound":-35.0,"n_constraints":504451,"n_variables":2048}
