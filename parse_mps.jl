@@ -189,7 +189,7 @@ for problem in problems
         cpp_rhs_n = join(string.(rhs_n), ", ")
 
 
-        """#include"../gpu_solver.h"
+        """#include"../gpu_solver.cu"
     int main(int argc, char **argv) {
         $cpp_var_2_constr
         $cpp_constr_2_var

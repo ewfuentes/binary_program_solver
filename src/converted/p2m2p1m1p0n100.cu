@@ -1,4 +1,4 @@
-#include"../gpu_solver.h"
+#include"../gpu_solver.cu"
 int main(int argc, char **argv) {
     cuda::std::array<cuda::std::tuple<int, pair<int>>, 280> const var_2_constr{
 cuda::std::make_tuple(0, pair{0, -1}), 
